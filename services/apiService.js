@@ -3,8 +3,16 @@ import CryptoJS from 'crypto-js';
 
 const debuggerHost = Constants.expoConfig?.hostUri || '';
 const hostIP = debuggerHost.split(':')[0] || 'localhost';
+const deployedApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || '';
+const secretKey = process.env.EXPO_PUBLIC_API_KEY || 'cinestream_secret_secure_key_2026';
+
+const normalizeBaseUrl = (value) => {
+  if (!value) return '';
+  return value.replace(/\/+$/, '');
+};
 
 const API_FALLBACKS = [
+  deployedApiBaseUrl ? `${normalizeBaseUrl(deployedApiBaseUrl)}/api` : null,
   `http://${hostIP}:8000/api`,
   `http://${hostIP}:5173/api`,
   `http://192.168.0.40:8000/api`,
@@ -12,13 +20,12 @@ const API_FALLBACKS = [
   `http://localhost:8000/api`,
   `http://localhost:5173/api`,
   `http://10.0.2.2:8000/api`
-];
+].filter(Boolean);
 
-let activeBaseUrl = API_FALLBACKS[0];
+let activeBaseUrl = API_FALLBACKS[0] || 'http://localhost:8000/api';
 
 async function customFetch(endpoint, options = {}) {
   const timestamp = String(Date.now());
-  const secretKey = 'cinestream_secret_secure_key_2026';
   const dataToSign = `/api${endpoint}${timestamp}`;
   const signature = CryptoJS.HmacSHA256(dataToSign, secretKey).toString(CryptoJS.enc.Hex);
 
