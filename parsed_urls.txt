@@ -1,0 +1,10 @@
+[
+  "https://api2.imdb3.shop/api",
+  "https://api2.imdb4.shop/api/search2",
+  "https://raw.githubusercontent.com/appli55/netmirror_extension/main/file/NetMirror_extension.zip",
+  "https://github.com/appli55/netmirror_extension",
+  "https://api2.imdb4.shop/api/related/",
+  "https://t.me/netmirror_web",
+  "https://apis.google.com/js/api.js",
+  "https://www.google.com/recaptcha/api.js"
+]
