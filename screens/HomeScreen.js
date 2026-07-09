@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, memo } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -229,15 +229,19 @@ export default function HomeScreen({ navigation }) {
   };
 
   useEffect(() => {
+    // If search query is empty, reset search state and load initial trending data
     if (searchQuery.trim() === '') {
       setIsSearching(false);
-      loadTrendingData(0, false, activeFilter, activeCategory);
+      // Only reload if we were previously searching
+      if (isSearching) {
+        loadTrendingData(0, false, activeFilter, activeCategory);
+      }
       return;
     }
 
     const delayDebounceFn = setTimeout(() => {
       triggerSearch(searchQuery);
-    }, 450);
+    }, 500);
 
     return () => clearTimeout(delayDebounceFn);
   }, [searchQuery]);
@@ -283,7 +287,7 @@ export default function HomeScreen({ navigation }) {
     loadTrendingData(0, false, activeFilter, categoryName);
   };
 
-  const detectLanguage = (title) => {
+  const detectLanguage = useCallback((title) => {
     if (!title) return 'Original';
     const titleLower = title.toLowerCase();
     const languages = [
@@ -297,7 +301,7 @@ export default function HomeScreen({ navigation }) {
       }
     }
     return 'Original';
-  };
+  }, []);
 
   const sortMediaList = (list) => {
     return [...list].sort((a, b) => {
@@ -350,29 +354,13 @@ export default function HomeScreen({ navigation }) {
     );
   };
 
-  const renderCard = ({ item }) => (
-    <TouchableOpacity 
-      style={styles.card} 
-      activeOpacity={0.8}
+  const renderCard = useCallback(({ item }) => (
+    <MediaCard
+      item={item}
       onPress={() => navigation.navigate('Details', { id: item.id })}
-    >
-      <View style={styles.posterWrapper}>
-        <ExpoImage 
-          source={{ uri: item.poster }} 
-          style={styles.poster} 
-          contentFit="cover"
-          transition={200}
-        />
-        <View style={styles.badgeContainer}>
-          <Text style={styles.badgeText}>{item.type}</Text>
-        </View>
-        <View style={styles.langBadgeContainer}>
-          <Text style={styles.langBadgeText}>{detectLanguage(item.title)}</Text>
-        </View>
-      </View>
-      <Text style={styles.movieTitle} numberOfLines={1}>{item.title}</Text>
-    </TouchableOpacity>
-  );
+      detectLanguage={detectLanguage}
+    />
+  ), [navigation, detectLanguage]);
 
   return (
     <View style={styles.container}>
@@ -486,13 +474,18 @@ export default function HomeScreen({ navigation }) {
           numColumns={2}
           contentContainerStyle={styles.listContainer}
           columnWrapperStyle={styles.columnWrapper}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          updateCellsBatchingPeriod={30}
+          windowSize={10}
+          initialNumToRender={8}
           ListEmptyComponent={
             <View style={styles.centerContainer}>
               <Text style={styles.emptyText}>No results found in Netmirror.</Text>
             </View>
           }
           onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.4}
+          onEndReachedThreshold={0.5}
           ListFooterComponent={() => {
             if (!loadingMore) return null;
             return <ActivityIndicator size="small" color="#E50914" style={{ marginVertical: 16 }} />;
@@ -540,6 +533,32 @@ export default function HomeScreen({ navigation }) {
     </View>
   );
 }
+
+// Memoized card component — prevents unnecessary re-renders during list scroll/load
+const MediaCard = memo(({ item, onPress, detectLanguage }) => (
+  <TouchableOpacity
+    style={styles.card}
+    activeOpacity={0.8}
+    onPress={onPress}
+  >
+    <View style={styles.posterWrapper}>
+      <ExpoImage
+        source={{ uri: item.poster }}
+        style={styles.poster}
+        contentFit="cover"
+        transition={150}
+        cachePolicy="memory-disk"
+      />
+      <View style={styles.badgeContainer}>
+        <Text style={styles.badgeText}>{item.type}</Text>
+      </View>
+      <View style={styles.langBadgeContainer}>
+        <Text style={styles.langBadgeText}>{detectLanguage(item.title)}</Text>
+      </View>
+    </View>
+    <Text style={styles.movieTitle} numberOfLines={1}>{item.title}</Text>
+  </TouchableOpacity>
+));
 
 const styles = StyleSheet.create({
   container: {

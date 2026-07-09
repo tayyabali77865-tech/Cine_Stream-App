@@ -9,12 +9,18 @@ import {
   BackHandler,
   Modal,
   Alert,
-  ScrollView
+  ScrollView,
+  Dimensions
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { apiService } from '../services/apiService';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
+
+// ─── screen dimensions ───────────────────────────────────────────────────────
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const VIDEO_HEIGHT = Math.round(SCREEN_HEIGHT * 0.40); // 40% of screen height
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -393,12 +399,6 @@ export default function PlayerScreen({ route, navigation }) {
         useNativeControls
         resizeMode={ResizeMode.CONTAIN}
         shouldPlay
-        bufferConfig={{
-          maxBufferMs: 15000,
-          minBufferMs: 3000,
-          bufferForPlaybackMs: 1000,
-          bufferForPlaybackAfterRebufferMs: 2000,
-        }}
         onError={(err) => {
           console.error('[Player] video error:', err);
           setError('Playback failed. The session may have expired.');
@@ -548,7 +548,7 @@ export default function PlayerScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#050507' },
 
-  video: { width: '100%', height: 300 },
+  video: { width: '100%', height: VIDEO_HEIGHT },
 
   center: {
     flex: 1,

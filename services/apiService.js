@@ -13,18 +13,56 @@ const normalizeBaseUrl = (value) => {
 
 const API_FALLBACKS = [
   deployedApiBaseUrl ? `${normalizeBaseUrl(deployedApiBaseUrl)}/api` : null,
-  'https://cinestream-app-production-68d6.up.railway.app/api', // Direct production fallback
+  'https://cinestream-app-production-68d6.up.railway.app/api',
   `http://${hostIP}:8000/api`,
-  `http://${hostIP}:5173/api`,
   `http://192.168.0.40:8000/api`,
-  `http://192.168.0.40:5173/api`,
-  `http://localhost:8000/api`,
-  `http://localhost:5173/api`,
-  `http://10.0.2.2:8000/api`
+  `http://10.0.2.2:8000/api`,
 ].filter(Boolean);
 
 const preferredBaseUrl = API_FALLBACKS[0] || 'http://localhost:8000/api';
 let activeBaseUrl = preferredBaseUrl;
+
+// Track failed URLs with cooldown (don't retry for 30 seconds)
+const failedUrlCooldown = new Map(); // url -> timestamp when it failed
+const COOLDOWN_MS = 30000; // 30 seconds
+
+function isUrlOnCooldown(url) {
+  const failedAt = failedUrlCooldown.get(url);
+  if (!failedAt) return false;
+  if (Date.now() - failedAt < COOLDOWN_MS) return true;
+  failedUrlCooldown.delete(url); // cooldown expired
+  return false;
+}
+
+function markUrlFailed(url) {
+  failedUrlCooldown.set(url, Date.now());
+}
+
+const fetchWithTimeout = async (url, opts = {}, timeout = 5000) => {
+  return Promise.race([
+    fetch(url, opts),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Timeout')), timeout)
+    )
+  ]);
+};
+
+// Fast health check with short timeout
+const checkHealth = async (baseUrl) => {
+  if (isUrlOnCooldown(baseUrl)) return false;
+  try {
+    const res = await Promise.race([
+      fetch(`${baseUrl}/health`),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 800))
+    ]);
+    if (res.ok) return true;
+    markUrlFailed(baseUrl);
+    return false;
+  } catch (e) {
+    markUrlFailed(baseUrl);
+    return false;
+  }
+};
 
 async function customFetch(endpoint, options = {}) {
   const timestamp = String(Date.now());
@@ -36,75 +74,45 @@ async function customFetch(endpoint, options = {}) {
     'X-Signature': signature,
     'X-Timestamp': timestamp
   };
-  const optsWithHeaders = {
-    ...options,
-    headers
-  };
+  const optsWithHeaders = { ...options, headers };
 
-  const fetchWithTimeout = async (url, opts = {}, timeout = 2500) => {
-    return Promise.race([
-      fetch(url, opts),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), timeout))
-    ]);
-  };
-
-  try {
-    // 1. Optimistic fetch directly using activeBaseUrl
-    const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 2500);
-    if (response.ok) {
-      return response;
-    }
-  } catch (err) {
-    console.log(`⚠️ Active base ${activeBaseUrl} fetch failed: ${err.message}. Checking server status...`);
-  }
-
-  // 2. If fetch failed, define health check helper
-  const checkHealth = async (baseUrl) => {
+  // 1. Try activeBaseUrl first (skip if on cooldown)
+  if (!isUrlOnCooldown(activeBaseUrl)) {
     try {
-      const res = await Promise.race([
-        fetch(`${baseUrl}/health`),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 1200))
-      ]);
-      return res.ok;
-    } catch (e) {
-      return false;
-    }
-  };
-
-  // Check if currently configured base URL is still online
-  const isOnline = await checkHealth(activeBaseUrl);
-  if (isOnline) {
-    try {
-      return await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 2500);
+      const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 5000);
+      if (response.ok) return response;
+      markUrlFailed(activeBaseUrl);
     } catch (err) {
-      console.log(`⚠️ Active base retry failed: ${err.message}`);
+      markUrlFailed(activeBaseUrl);
+      console.log(`⚠️ ${activeBaseUrl} failed: ${err.message}`);
+    }
+  } else {
+    console.log(`⏭️ Skipping ${activeBaseUrl} (on cooldown), scanning fallbacks...`);
+  }
+
+  // 2. Scan all fallbacks concurrently (skip ones on cooldown)
+  const candidateUrls = API_FALLBACKS.filter(url => url !== activeBaseUrl && !isUrlOnCooldown(url));
+
+  if (candidateUrls.length > 0) {
+    const scanPromises = candidateUrls.map(async (url) => {
+      const online = await checkHealth(url);
+      if (online) return url;
+      throw new Error('Offline');
+    });
+
+    try {
+      const workingUrl = await Promise.any(scanPromises);
+      activeBaseUrl = workingUrl;
+      console.log(`🎯 Switched to: ${activeBaseUrl}`);
+      const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 5000);
+      if (response.ok) return response;
+    } catch (_) {
+      // All failed
     }
   }
 
-  if (activeBaseUrl !== preferredBaseUrl) {
-    activeBaseUrl = preferredBaseUrl;
-    console.log(`🔁 Switching back to preferred base URL: ${activeBaseUrl}`);
-  }
-
-  console.log(`⚠️ Active base ${activeBaseUrl} is confirmed offline. Finding working fallback server...`);
-
-  // 3. Scan fallbacks using the fast health check
-  for (const url of API_FALLBACKS) {
-    if (url === activeBaseUrl) continue;
-    const urlOnline = await checkHealth(url);
-    if (urlOnline) {
-      activeBaseUrl = url;
-      console.log(`🎯 Auto-discovery success: Connected to API base URL: ${activeBaseUrl}`);
-      try {
-        return await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 2500);
-      } catch (err) {
-        console.log(`⚠️ Fallback connection to ${url} failed: ${err.message}`);
-      }
-    }
-  }
-
-  // 4. Ultimate fallback
-  return fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 2500);
+  console.log('❌ All servers offline or on cooldown.');
+  throw new Error('Network Error: All servers unavailable. Please check your connection.');
 }
 
 export const apiService = {
