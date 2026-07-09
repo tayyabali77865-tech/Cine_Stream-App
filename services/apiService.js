@@ -13,6 +13,7 @@ const normalizeBaseUrl = (value) => {
 
 const API_FALLBACKS = [
   deployedApiBaseUrl ? `${normalizeBaseUrl(deployedApiBaseUrl)}/api` : null,
+  'https://cinestream-app-production-68d6.up.railway.app/api', // Direct production fallback
   `http://${hostIP}:8000/api`,
   `http://${hostIP}:5173/api`,
   `http://192.168.0.40:8000/api`,
