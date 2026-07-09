@@ -1,14 +1,25 @@
 {
   "expo": {
-    "name": "netmirror-stream-app",
-    "slug": "netmirror-stream-app",
+    "name": "CineStream",
+    "slug": "CineStream",
     "owner": "tayyabali77865",
+    "version": "1.0.0",
+    "orientation": "portrait",
+
+    "icon": "./assets/icon.png",
+
     "plugins": [
       "expo-asset"
     ],
+
     "android": {
-      "package": "com.cinestream.tayyabali77865"
+      "package": "com.cinestream.tayyabali77865",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#000000"
+      }
     },
+
     "extra": {
       "eas": {
         "projectId": "1a99f29d-aeac-4689-a694-afb2351a6083"
