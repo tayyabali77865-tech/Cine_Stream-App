@@ -147,5 +147,22 @@ export const apiService = {
       console.warn('Backend stream fetch failed:', e);
       throw e;
     }
+  },
+
+  /**
+   * Fetches real download quality options for a media item from the backend.
+   * Returns { qualities: [{quality, size, url}], referer } or throws.
+   */
+  async getDownloadQualities(id, season = '', episode = '', lang = 'Hindi') {
+    try {
+      const response = await customFetch(
+        `/download-qualities/${id}?season=${season}&episode=${episode}&lang=${encodeURIComponent(lang)}`
+      );
+      if (!response.ok) throw new Error('Backend failed to fetch download qualities.');
+      return await response.json();
+    } catch (e) {
+      console.warn('Download qualities fetch failed:', e);
+      throw e;
+    }
   }
 };

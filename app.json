@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "CineStream",
-    "slug": "CineStream",
+    "slug": "netmirror-stream-app",
     "owner": "tayyabali77865",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,7 +9,15 @@
     "icon": "./assets/icon.png",
 
     "plugins": [
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow CineStream to save downloaded videos to your gallery.",
+          "savePhotosPermission": "Allow CineStream to save videos to your gallery.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ]
     ],
 
     "android": {

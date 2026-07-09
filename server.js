@@ -355,6 +355,7 @@ app.get('/api/stream/:id', async (req, res) => {
     let item = results[0];
 
     let resolvedVideoUrl = null;
+    let resolvedQualities = [];
     let targetId = id;
 
     // alternate language handling
@@ -393,10 +394,23 @@ app.get('/api/stream/:id', async (req, res) => {
     if (item.embed) {
       const rawEmbedUrl = item.embed;
       const urlParamMatch = rawEmbedUrl.match(/url=([^&]+)/);
+      const sParamMatch = rawEmbedUrl.match(/[?&]s=([^&]+)/);
       if (urlParamMatch) {
         const decodedUrl = Buffer.from(urlParamMatch[1], 'base64').toString('ascii');
         console.log(`🔓 Decoded Embed Host URL: ${decodedUrl}`);
         resolvedVideoUrl = await extractDirectVideoLink(decodedUrl);
+        if (resolvedVideoUrl) {
+          let sizeLabel = 'N/A';
+          if (sParamMatch) {
+            try { sizeLabel = Buffer.from(sParamMatch[1], 'base64').toString('ascii').trim(); } catch (_) {}
+          }
+          const qualityMatch = (rawEmbedUrl + resolvedVideoUrl + (item.title || '')).match(/(\d{3,4}p)/i);
+          resolvedQualities = [{
+            quality: qualityMatch ? qualityMatch[1].toUpperCase() : 'HD',
+            size: sizeLabel,
+            url: resolvedVideoUrl
+          }];
+        }
       }
     }
 
@@ -405,7 +419,11 @@ app.get('/api/stream/:id', async (req, res) => {
       const dp = item.dp;
       const titleClean = item.title ? item.title.trim() : 'Video';
       const na = Buffer.from(titleClean).toString('base64');
-      resolvedVideoUrl = await resolveWatchboxStream(targetId, targetSe, targetEp, dp, na);
+      const watchboxResult = await resolveWatchboxStream(targetId, targetSe, targetEp, dp, na);
+      if (watchboxResult) {
+        resolvedVideoUrl = watchboxResult.videoUrl;
+        resolvedQualities = watchboxResult.qualities || [];
+      }
     }
 
     if (!resolvedVideoUrl) {
@@ -428,15 +446,32 @@ app.get('/api/stream/:id', async (req, res) => {
               if (altItemMeta.embed) {
                 const rawEmbedUrl = altItemMeta.embed;
                 const urlParamMatch = rawEmbedUrl.match(/url=([^&]+)/);
+                const sParamMatch = rawEmbedUrl.match(/[?&]s=([^&]+)/);
                 if (urlParamMatch) {
                   const decodedUrl = Buffer.from(urlParamMatch[1], 'base64').toString('ascii');
                   resolvedVideoUrl = await extractDirectVideoLink(decodedUrl);
+                  if (resolvedVideoUrl) {
+                    let sizeLabel = 'N/A';
+                    if (sParamMatch) {
+                      try { sizeLabel = Buffer.from(sParamMatch[1], 'base64').toString('ascii').trim(); } catch (_) {}
+                    }
+                    const qualityMatch = (rawEmbedUrl + resolvedVideoUrl + (altItemMeta.title || '')).match(/(\d{3,4}p)/i);
+                    resolvedQualities = [{
+                      quality: qualityMatch ? qualityMatch[1].toUpperCase() : 'HD',
+                      size: sizeLabel,
+                      url: resolvedVideoUrl
+                    }];
+                  }
                 }
               }
               
               if (!resolvedVideoUrl && altItemMeta.dp) {
                 const altNa = Buffer.from(altItemMeta.title ? altItemMeta.title.trim() : 'Video').toString('base64');
-                resolvedVideoUrl = await resolveWatchboxStream(altItem.id, targetSe, targetEp, altItemMeta.dp, altNa);
+                const watchboxResult = await resolveWatchboxStream(altItem.id, targetSe, targetEp, altItemMeta.dp, altNa);
+                if (watchboxResult) {
+                  resolvedVideoUrl = watchboxResult.videoUrl;
+                  resolvedQualities = watchboxResult.qualities || [];
+                }
               }
               
               if (resolvedVideoUrl) {
@@ -458,6 +493,7 @@ app.get('/api/stream/:id', async (req, res) => {
     console.log(`🔥 Resolved final streaming file: ${resolvedVideoUrl}`);
     res.json({
       videoUrl: resolvedVideoUrl,
+      qualities: resolvedQualities,
       audioUrl: null,
       referer: REFERER_URL
     });
@@ -466,6 +502,180 @@ app.get('/api/stream/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to resolve streaming file.' });
   }
 });
+
+/**
+ * 5. Download Qualities Resolver
+ * Fetches the real quality options available for a given media item by scraping
+ * the watchbox player HTML for div.dl-item entries (e.g. "720P 764.2MB" + CDN URL).
+ * Falls back to embed s= size param for drivehub-style single-quality items.
+ */
+app.get('/api/download-qualities/:id', async (req, res) => {
+  const { id } = req.params;
+  const se = req.query.season || '';
+  const ep = req.query.episode || '';
+  const lang = req.query.lang || 'Hindi';
+
+  try {
+    console.log(`🔍 Fetching download qualities for ID: ${id} (S${se}E${ep} lang=${lang})`);
+
+    const endpoint = `/movie/${id}`;
+    const { value: detailsData } = await detailsCache.get(endpoint);
+    const results = detailsData.results || [];
+    if (results.length === 0) {
+      return res.status(404).json({ error: 'Media not found.' });
+    }
+
+    let item = results[0];
+    let targetId = id;
+    let targetSe = se;
+    let targetEp = ep;
+
+    // Alternate language lookup
+    if (lang !== 'Hindi') {
+      const baseTitle = item.title.replace(/\[.*?\]/g, '').trim();
+      const searchRes = await fetchFromNetmirrorWithRetry(`/search2/${encodeURIComponent(baseTitle)}?page=0`).catch(() => null);
+      if (searchRes && searchRes.results) {
+        const matchedItem = searchRes.results.find(r => r.title.toLowerCase().includes(lang.toLowerCase()));
+        if (matchedItem) {
+          targetId = matchedItem.id;
+          const altDetails = await fetchFromNetmirrorWithRetry(`/movie/${targetId}`).catch(() => null);
+          if (altDetails && altDetails.results && altDetails.results.length > 0) {
+            item = altDetails.results[0];
+          }
+        }
+      }
+    }
+
+    // Clear season/ep for movies
+    if (item.media_type !== 'tv' || !item.season || (Array.isArray(item.season) && item.season.length === 0)) {
+      targetSe = '';
+      targetEp = '';
+    }
+
+    let qualities = [];
+
+    // Strategy A: Watchbox (dp field) — scrape popup-window dl-item entries
+    if (item.dp) {
+      const dp = item.dp;
+      const titleClean = item.title ? item.title.trim() : 'Video';
+      const na = Buffer.from(titleClean).toString('base64');
+      qualities = await extractWatchboxQualities(targetId, targetSe, targetEp, dp, na);
+    }
+
+    // Strategy B: Embed / drivehub-style — single quality from s= param
+    if (qualities.length === 0 && item.embed) {
+      const rawEmbedUrl = item.embed;
+      const urlParamMatch = rawEmbedUrl.match(/url=([^&]+)/);
+      const sParamMatch = rawEmbedUrl.match(/[?&]s=([^&]+)/);
+
+      if (urlParamMatch) {
+        const decodedUrl = Buffer.from(urlParamMatch[1], 'base64').toString('ascii');
+        const directUrl = await extractDirectVideoLink(decodedUrl);
+        if (directUrl) {
+          let sizeLabel = 'N/A';
+          if (sParamMatch) {
+            try { sizeLabel = Buffer.from(sParamMatch[1], 'base64').toString('ascii').trim(); } catch (_) {}
+          }
+          const qualityMatch = (rawEmbedUrl + directUrl + (item.title || '')).match(/(\d{3,4}p)/i);
+          qualities.push({
+            quality: qualityMatch ? qualityMatch[1].toUpperCase() : 'HD',
+            size: sizeLabel,
+            url: directUrl
+          });
+        }
+      }
+    }
+
+    if (qualities.length === 0) {
+      return res.status(404).json({ error: 'No download qualities found for this media.' });
+    }
+
+    console.log(`✅ Found ${qualities.length} quality option(s) for ID ${id}:`, qualities.map(q => `${q.quality} ${q.size}`).join(', '));
+    res.json({ qualities, referer: REFERER_URL });
+  } catch (error) {
+    console.error(`Error fetching download qualities for ID ${id}:`, error.message);
+    res.status(500).json({ error: 'Failed to fetch download qualities.' });
+  }
+});
+
+/**
+ * Extracts download quality options from watchbox player HTML by querying all domains concurrently.
+ */
+async function extractWatchboxQualities(id, se, ep, dp, na) {
+  const WATCHBOX_DOMAINS = [
+    'speed.watch22.shop',
+    'play.watch22.shop',
+    'play.watch21.shop',
+    'test.watch22.shop',
+    'playnew.watch21.shop'
+  ];
+  const netmirrorReferer = 'https://netmirror.global/';
+
+  const promises = WATCHBOX_DOMAINS.map(async (domain) => {
+    const baseUrl = `https://${domain}/play/watchbox.php?id=${id}&se=${se}&ep=${ep}&dp=${dp}&na=${encodeURIComponent(na)}&exten=1`;
+    const dummyRes = await axios.get(`${baseUrl}&ts=0&sig=0`, {
+      headers: getHeaders(netmirrorReferer),
+      timeout: 2500
+    });
+
+    const timeMatch = dummyRes.data.match(/Time not Found\.<br><br>(\d+)/);
+    if (!timeMatch) throw new Error(`[${domain}] No time challenge`);
+
+    const serverTime = timeMatch[1];
+    const signature = crypto.createHmac('sha256', HM_SECRET).update(String(serverTime)).digest('hex');
+    const authRes = await axios.get(`${baseUrl}&ts=${serverTime}&sig=${signature}`, {
+      headers: getHeaders(netmirrorReferer),
+      timeout: 3000
+    });
+    const html = authRes.data;
+
+    if (html.includes('Server Buzy') || html.includes('Not Found. or Come from listed Website.')) {
+      throw new Error(`[${domain}] Server busy`);
+    }
+
+    const parsed = parseWatchboxQualities(html);
+    if (parsed.length === 0) throw new Error(`[${domain}] No qualities in HTML`);
+    return parsed;
+  });
+
+  try {
+    return await Promise.any(promises);
+  } catch (_) {
+    return [];
+  }
+}
+
+/**
+ * Parses watchbox HTML to extract quality/size/URL from popup-window div.dl-item elements.
+ * Each dl-item text is like "720P 764.2MB" and the CDN URL is in a myFunction_dl onclick.
+ */
+function parseWatchboxQualities(html) {
+  const $ = cheerio.load(html);
+  const qualities = [];
+
+  $('.dl-item').each((i, el) => {
+    const itemText = $(el).clone().children().remove().end().text().trim()
+      || $(el).text().trim();
+    const qualityMatch = itemText.match(/(\d{3,4}[Pp])/);
+    const sizeMatch = itemText.match(/(\d+(?:\.\d+)?)\s*(GB|MB|KB)/i);
+
+    // CDN URL from myFunction_dl onclick
+    let cdnUrl = null;
+    const onclickAttr = $(el).find('[onclick]').first().attr('onclick') || '';
+    const urlMatch = onclickAttr.match(/myFunction(?:_dl)?\s*\(\s*['"]([^'"]+)['"]/);
+    if (urlMatch) cdnUrl = urlMatch[1];
+
+    if (qualityMatch && cdnUrl) {
+      qualities.push({
+        quality: qualityMatch[1].toUpperCase(),
+        size: sizeMatch ? `${sizeMatch[1]} ${sizeMatch[2].toUpperCase()}` : 'N/A',
+        url: cdnUrl
+      });
+    }
+  });
+
+  return qualities;
+}
 
 /**
  * Scrapes direct streaming file URL from final hosting providers
@@ -546,7 +756,8 @@ async function resolveWatchboxStream(id, se, ep, dp, na) {
       const resolvedUrl = parseWatchboxHtml(htmlContent);
       if (resolvedUrl) {
         console.log(`[Watchbox] Fast resolution SUCCESS on domain: ${domain}`);
-        return resolvedUrl;
+        const parsedQualities = parseWatchboxQualities(htmlContent);
+        return { videoUrl: resolvedUrl, qualities: parsedQualities };
       }
       throw new Error(`Domain ${domain} failed parsing HTML.`);
     } catch (err) {
@@ -555,8 +766,8 @@ async function resolveWatchboxStream(id, se, ep, dp, na) {
   });
 
   try {
-    const firstSuccessfulUrl = await Promise.any(promises);
-    return firstSuccessfulUrl;
+    const result = await Promise.any(promises);
+    return result;
   } catch (aggregateError) {
     console.log('❌ All concurrent watchbox servers failed resolving links.');
     return null;

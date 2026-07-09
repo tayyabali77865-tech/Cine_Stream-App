@@ -154,7 +154,7 @@ export default function DetailsScreen({ route, navigation }) {
           <TouchableOpacity 
             style={styles.playButton}
             activeOpacity={0.8}
-            onPress={() => navigation.navigate('Player', { id: details.id, defaultLanguage: details.audioLanguages && details.audioLanguages[0] })}
+            onPress={() => navigation.navigate('Player', { id: details.id, title: details.title, defaultLanguage: details.audioLanguages && details.audioLanguages[0] })}
           >
             <Text style={styles.playButtonText}>▶ Play Movie</Text>
           </TouchableOpacity>
@@ -214,6 +214,7 @@ export default function DetailsScreen({ route, navigation }) {
                   activeOpacity={0.7}
                   onPress={() => navigation.navigate('Player', { 
                     id: details.id, 
+                    title: details.title,
                     season: selectedSeason.se, 
                     episode: epNum,
                     defaultLanguage: details.audioLanguages && details.audioLanguages[0]
