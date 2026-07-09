@@ -22,7 +22,8 @@ const API_FALLBACKS = [
   `http://10.0.2.2:8000/api`
 ].filter(Boolean);
 
-let activeBaseUrl = API_FALLBACKS[0] || 'http://localhost:8000/api';
+const preferredBaseUrl = API_FALLBACKS[0] || 'http://localhost:8000/api';
+let activeBaseUrl = preferredBaseUrl;
 
 async function customFetch(endpoint, options = {}) {
   const timestamp = String(Date.now());
@@ -77,6 +78,11 @@ async function customFetch(endpoint, options = {}) {
     } catch (err) {
       console.log(`⚠️ Active base retry failed: ${err.message}`);
     }
+  }
+
+  if (activeBaseUrl !== preferredBaseUrl) {
+    activeBaseUrl = preferredBaseUrl;
+    console.log(`🔁 Switching back to preferred base URL: ${activeBaseUrl}`);
   }
 
   console.log(`⚠️ Active base ${activeBaseUrl} is confirmed offline. Finding working fallback server...`);

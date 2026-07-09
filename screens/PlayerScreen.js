@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  ActivityIndicator, 
-  TouchableOpacity, 
+import {
+  StyleSheet,
+  Text,
+  View,
+  ActivityIndicator,
+  TouchableOpacity,
   StatusBar,
   BackHandler
 } from 'react-native';
@@ -20,13 +20,13 @@ export default function PlayerScreen({ route, navigation }) {
 
   useEffect(() => {
     loadStreamSources(activeLanguage);
-    
+
     const backAction = () => {
       navigation.goBack();
       return true;
     };
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
-    
+
     return () => backHandler.remove();
   }, [id, season, episode]);
 
@@ -72,8 +72,8 @@ export default function PlayerScreen({ route, navigation }) {
   return (
     <View style={styles.container}>
       <StatusBar hidden />
-      
-      {/* Expo AV Video Player with Custom Headers */}
+
+      {/* Expo AV Video Player with Custom Headers and Fast-buffer Configurations */}
       <Video
         source={{
           uri: streamSources.videoUrl,
@@ -83,9 +83,15 @@ export default function PlayerScreen({ route, navigation }) {
           }
         }}
         style={styles.videoPlayer}
-        useNativeControls
+        useNativeControls={true}
         resizeMode={ResizeMode.CONTAIN}
-        shouldPlay
+        shouldPlay={true}
+        bufferConfig={{
+          maxBufferMs: 15000,
+          minBufferMs: 3000,
+          bufferForPlaybackMs: 1000,
+          bufferForPlaybackAfterRebufferMs: 2000
+        }}
         onError={(err) => {
           console.error('Video Error:', err);
           setError('Failed to play the video. The session token may have expired.');
@@ -93,8 +99,8 @@ export default function PlayerScreen({ route, navigation }) {
       />
 
       {/* Floating Close Button */}
-      <TouchableOpacity 
-        style={styles.closeBtn} 
+      <TouchableOpacity
+        style={styles.closeBtn}
         onPress={() => navigation.goBack()}
         activeOpacity={0.7}
       >
@@ -113,7 +119,7 @@ const styles = StyleSheet.create({
   },
   videoPlayer: {
     width: '100%',
-    height: 350, // Fixed height profile to guarantee a taller size on portrait screens
+    height: 350,
   },
   centerContainer: {
     flex: 1,

@@ -1,5 +1,18 @@
 {
-  "plugins": [
-    "expo-asset"
-  ]
+  "expo": {
+    "name": "netmirror-stream-app",
+    "slug": "netmirror-stream-app",
+    "owner": "tayyabali77865",
+    "plugins": [
+      "expo-asset"
+    ],
+    "android": {
+      "package": "com.cinestream.tayyabali77865"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "1a99f29d-aeac-4689-a694-afb2351a6083"
+      }
+    }
+  }
 }
