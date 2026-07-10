@@ -186,8 +186,10 @@ const SkeletonCard = memo(({ pulseAnim }) => (
 
 // ─── Media Card ───────────────────────────────────────────────────────────────
 
-// Memoized card — only re-renders if item or onPress reference changes.
-const MediaCard = memo(({ item, onPress }) => (
+// Memoized card — posterUri is a string so shallow comparison in memo works perfectly.
+// Passing `item.poster` as a string prevents ExpoImage source object from being
+// recreated every render, which was the primary cause of MediaCard busting its memo.
+const MediaCard = memo(({ posterUri, title, type, onPress }) => (
   <TouchableOpacity
     style={styles.card}
     activeOpacity={0.8}
@@ -195,25 +197,28 @@ const MediaCard = memo(({ item, onPress }) => (
   >
     <View style={styles.posterWrapper}>
       <ExpoImage
-        source={{ uri: item.poster }}
+        source={posterUri}
         style={styles.poster}
         contentFit="cover"
         transition={150}
         cachePolicy="memory-disk"
       />
       <View style={styles.badgeContainer}>
-        <Text style={styles.badgeText}>{item.type}</Text>
+        <Text style={styles.badgeText}>{type}</Text>
       </View>
       <View style={styles.langBadgeContainer}>
-        <Text style={styles.langBadgeText}>{detectLanguage(item.title)}</Text>
+        <Text style={styles.langBadgeText}>{detectLanguage(title)}</Text>
       </View>
     </View>
-    <Text style={styles.movieTitle} numberOfLines={1}>{item.title}</Text>
+    <Text style={styles.movieTitle} numberOfLines={1}>{title}</Text>
   </TouchableOpacity>
 ));
 
 // ─── Footer Component ─────────────────────────────────────────────────────────
 
+// Keep as a named class reference — passed directly as ListFooterComponent prop.
+// Do NOT wrap in useMemo as JSX — passing a new element reference triggers full
+// FlatList diffs. Instead, pass the component and use extraData to control updates.
 const ListFooter = memo(({ loadingMore }) => {
   if (!loadingMore) return null;
   return <ActivityIndicator size="small" color="#E50914" style={styles.footerIndicator} />;
@@ -451,28 +456,29 @@ export default function HomeScreen({ navigation }) {
 
   // ─── Render Helpers ───────────────────────────────────────────────────────
 
-  // Stable per-item press handlers — keyed by item.id so memo(MediaCard) works correctly.
-  // We store handlers in a ref-map to avoid re-creating them on every render call.
+  // Stable per-item press handlers — keyed by item.id so memo(MediaCard) works.
   const pressHandlersRef = useRef({});
 
   const renderCard = useCallback(({ item }) => {
-    // Create and cache a stable onPress handler per item id
     if (!pressHandlersRef.current[item.id]) {
       pressHandlersRef.current[item.id] = () => navigation.navigate('Details', { id: item.id });
     }
+    // Pass individual scalar/string props so MediaCard memo shallow-comparison works.
+    // Passing the whole `item` object would always look "new" if the list array changed.
     return (
       <MediaCard
-        item={item}
+        posterUri={item.poster}
+        title={item.title}
+        type={item.type}
         onPress={pressHandlersRef.current[item.id]}
       />
     );
   }, [navigation]);
 
-  // Memoized footer to prevent FlatList re-renders when loadingMore changes
-  const listFooter = useMemo(
-    () => <ListFooter loadingMore={loadingMore} />,
-    [loadingMore]
-  );
+  // Pass ListFooter CLASS (not JSX element) as ListFooterComponent.
+  // Use extraData so FlatList re-renders the footer when loadingMore flips,
+  // without triggering a diff of every row.
+  // (Passing JSX element via useMemo still changes the reference and causes full diffs.)
 
   // Memoized empty state
   const listEmpty = useMemo(() => (
@@ -622,14 +628,15 @@ export default function HomeScreen({ navigation }) {
           contentContainerStyle={styles.listContainer}
           columnWrapperStyle={styles.columnWrapper}
           removeClippedSubviews={false}
-          maxToRenderPerBatch={10}
-          updateCellsBatchingPeriod={30}
-          windowSize={11}
-          initialNumToRender={10}
+          maxToRenderPerBatch={6}
+          updateCellsBatchingPeriod={50}
+          windowSize={5}
+          initialNumToRender={6}
           ListEmptyComponent={listEmpty}
           onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={listFooter}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={ListFooter}
+          extraData={loadingMore}
         />
       )}
 
