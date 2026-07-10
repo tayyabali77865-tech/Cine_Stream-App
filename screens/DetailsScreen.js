@@ -1,13 +1,12 @@
-import React, { useEffect, useState } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  ScrollView, 
-  TouchableOpacity, 
-  ActivityIndicator, 
+import React, { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react';
+import {
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  TouchableOpacity,
   Dimensions,
-  FlatList,
+  FlatList,  // kept in import list for compatibility but not used — removing below
   Animated
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
@@ -15,71 +14,159 @@ import { apiService } from '../services/apiService';
 
 const { width } = Dimensions.get('window');
 
+// ─── Pure Helpers (module-level — zero allocation per render) ────────────────
+
+/**
+ * Pads episode numbers to 2 digits, e.g. "3" -> "03"
+ */
+function padEpisodeNumber(numStr) {
+  const parsed = parseInt(numStr, 10);
+  if (isNaN(parsed)) return numStr;
+  return parsed < 10 ? `0${parsed}` : String(parsed);
+}
+
+// ─── Episode Button ───────────────────────────────────────────────────────────
+
+// Memoized episode button — only re-renders if epNum, season, or onPress changes
+const EpisodeButton = memo(({ epNum, onPress }) => (
+  <TouchableOpacity
+    style={styles.episodeSquare}
+    activeOpacity={0.7}
+    onPress={onPress}
+  >
+    <Text style={styles.episodeSquareText}>{padEpisodeNumber(epNum)}</Text>
+  </TouchableOpacity>
+));
+
+// ─── Details Screen ───────────────────────────────────────────────────────────
+
 export default function DetailsScreen({ route, navigation }) {
   const { id } = route.params;
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedSeason, setSelectedSeason] = useState(null);
   const [showSeasonDropdown, setShowSeasonDropdown] = useState(false);
-  const [pulseAnim] = useState(new Animated.Value(0.3));
 
+  // ── Animated values as refs — no extra state slot, stops on unmount ──────
+  const pulseAnim = useRef(new Animated.Value(0.3)).current;
+  const pulseLoopRef = useRef(null);
+
+  // ── Pulse animation ───────────────────────────────────────────────────────
   useEffect(() => {
     if (loading) {
-      Animated.loop(
+      const loop = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 0.7,
-            duration: 850,
-            useNativeDriver: true
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 0.3,
-            duration: 850,
-            useNativeDriver: true
-          })
+          Animated.timing(pulseAnim, { toValue: 0.7, duration: 850, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 0.3, duration: 850, useNativeDriver: true }),
         ])
-      ).start();
+      );
+      pulseLoopRef.current = loop;
+      loop.start();
+    } else {
+      if (pulseLoopRef.current) {
+        pulseLoopRef.current.stop();
+        pulseLoopRef.current = null;
+      }
     }
-  }, [loading]);
 
+    return () => {
+      if (pulseLoopRef.current) {
+        pulseLoopRef.current.stop();
+        pulseLoopRef.current = null;
+      }
+    };
+  }, [loading, pulseAnim]);
+
+  // ── Data Load ─────────────────────────────────────────────────────────────
   useEffect(() => {
+    let cancelled = false;
+
+    const loadDetails = async () => {
+      try {
+        setLoading(true);
+        const data = await apiService.getMediaDetails(id);
+        if (cancelled) return;
+        setDetails(data);
+        if (data && data.seasons && data.seasons.length > 0) {
+          setSelectedSeason(data.seasons[0]);
+        }
+      } catch (e) {
+        if (!cancelled) console.error(e);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
     loadDetails();
+    return () => { cancelled = true; };
   }, [id]);
 
-  const loadDetails = async () => {
-    try {
-      setLoading(true);
-      const data = await apiService.getMediaDetails(id);
-      setDetails(data);
-      
-      // Auto-select first season if available
-      if (data && data.seasons && data.seasons.length > 0) {
-        setSelectedSeason(data.seasons[0]);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+  // ── Memoized Derived Values ───────────────────────────────────────────────
+
+  const isTvShow = useMemo(
+    () => !!(details && details.seasons && details.seasons.length > 0),
+    [details]
+  );
+
+  const episodesForSelectedSeason = useMemo(() => {
+    if (!selectedSeason) return [];
+    if (selectedSeason.allEp && selectedSeason.allEp.trim() !== '') {
+      return selectedSeason.allEp.split(',').map(val => val.trim()).filter(Boolean);
     }
-  };
+    // Fallback: generate sequence up to ep count
+    const total = selectedSeason.ep || 1;
+    const eps = [];
+    for (let i = 1; i <= total; i++) eps.push(String(i));
+    return eps;
+  }, [selectedSeason]);
+
+  // ── Callbacks ─────────────────────────────────────────────────────────────
+
+  const handleSeasonToggle = useCallback(() => {
+    setShowSeasonDropdown(prev => !prev);
+  }, []);
+
+  const handleSeasonSelect = useCallback((sItem) => {
+    setSelectedSeason(sItem);
+    setShowSeasonDropdown(false);
+  }, []);
+
+  // Pre-build stable onPress handlers for episodes keyed by epNum + season
+  // so EpisodeButton memo is effective.
+  const episodePressHandlersRef = useRef({});
+
+  const getEpisodeHandler = useCallback((epNum) => {
+    const key = `s${selectedSeason?.se}_e${epNum}`;
+    if (!episodePressHandlersRef.current[key]) {
+      episodePressHandlersRef.current[key] = () =>
+        navigation.navigate('Player', {
+          id: details.id,
+          title: details.title,
+          season: selectedSeason.se,
+          episode: epNum,
+          defaultLanguage: details.audioLanguages && details.audioLanguages[0],
+        });
+    }
+    return episodePressHandlersRef.current[key];
+  }, [navigation, details, selectedSeason]);
+
+  // Clear handler cache when season changes to avoid stale closures
+  useEffect(() => {
+    episodePressHandlersRef.current = {};
+  }, [selectedSeason]);
+
+  // ── Loading Skeleton ──────────────────────────────────────────────────────
 
   if (loading) {
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-        {/* Animated Banner Skeleton */}
         <Animated.View style={[styles.skeletonBanner, { opacity: pulseAnim }]} />
-        
         <View style={styles.contentContainer}>
-          {/* Animated Title Skeleton */}
           <Animated.View style={[styles.skeletonLine, { width: '80%', height: 26, marginBottom: 16, opacity: pulseAnim }]} />
-          
-          {/* Animated Badge Row Skeleton */}
           <View style={styles.badgeRow}>
             <Animated.View style={[styles.skeletonBadge, { opacity: pulseAnim }]} />
             <Animated.View style={[styles.skeletonBadge, { opacity: pulseAnim }]} />
           </View>
-          
-          {/* Animated Description Lines Skeleton */}
           <View style={{ marginTop: 24 }}>
             <Animated.View style={[styles.skeletonLine, { width: '100%', height: 14, marginBottom: 8, opacity: pulseAnim }]} />
             <Animated.View style={[styles.skeletonLine, { width: '100%', height: 14, marginBottom: 8, opacity: pulseAnim }]} />
@@ -98,45 +185,25 @@ export default function DetailsScreen({ route, navigation }) {
     );
   }
 
-  // Parse episodes of the selected season correctly using allEp if available
-  let episodesForSelectedSeason = [];
-  if (selectedSeason) {
-    if (selectedSeason.allEp && selectedSeason.allEp.trim() !== '') {
-      episodesForSelectedSeason = selectedSeason.allEp.split(',').map(val => val.trim()).filter(Boolean);
-    } else {
-      // Fallback: if no allEp list, generate sequence up to ep count
-      const total = selectedSeason.ep || 1;
-      for (let i = 1; i <= total; i++) {
-        episodesForSelectedSeason.push(String(i));
-      }
-    }
-  }
-
-  const isTvShow = details.seasons && details.seasons.length > 0;
-
-  // Pads episode numbers to 2 digits, e.g. "3" -> "03"
-  const padEpisodeNumber = (numStr) => {
-    const parsed = parseInt(numStr, 10);
-    if (isNaN(parsed)) return numStr;
-    return parsed < 10 ? `0${parsed}` : String(parsed);
-  };
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       {/* Poster Image */}
       <View style={styles.posterContainer}>
-        <ExpoImage 
-          source={{ uri: details.poster }} 
+        <ExpoImage
+          source={{ uri: details.poster }}
           style={styles.poster}
           contentFit="cover"
           transition={250}
+          cachePolicy="memory-disk"
         />
         <View style={styles.overlay} />
       </View>
 
       <View style={styles.contentContainer}>
         <Text style={styles.title}>{details.title}</Text>
-        
+
         <View style={styles.badgeRow}>
           {(details.audioLanguages || []).map((lang, idx) => (
             <View key={idx} style={styles.langBadge}>
@@ -151,29 +218,33 @@ export default function DetailsScreen({ route, navigation }) {
         {/* Play Area / Episode Selector */}
         {!isTvShow ? (
           // Movie Play Button
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.playButton}
             activeOpacity={0.8}
-            onPress={() => navigation.navigate('Player', { id: details.id, title: details.title, defaultLanguage: details.audioLanguages && details.audioLanguages[0] })}
+            onPress={() => navigation.navigate('Player', {
+              id: details.id,
+              title: details.title,
+              defaultLanguage: details.audioLanguages && details.audioLanguages[0],
+            })}
           >
             <Text style={styles.playButtonText}>▶ Play Movie</Text>
           </TouchableOpacity>
         ) : (
-          // TV Show Custom Season/Episode Selector (matches user's mock image)
+          // TV Show Custom Season/Episode Selector
           <View style={styles.tvSelectorContainer}>
             {/* Season Dropdown Selector */}
             <View style={styles.dropdownWrapper}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.dropdownBtn}
                 activeOpacity={0.8}
-                onPress={() => setShowSeasonDropdown(!showSeasonDropdown)}
+                onPress={handleSeasonToggle}
               >
                 <Text style={styles.dropdownBtnText}>
                   Season {selectedSeason ? String(selectedSeason.se).padStart(2, '0') : '01'}
                 </Text>
                 <Text style={styles.dropdownChevron}>▼</Text>
               </TouchableOpacity>
-              
+
               {/* Dropdown Menu Options */}
               {showSeasonDropdown && (
                 <View style={styles.dropdownMenu}>
@@ -185,10 +256,7 @@ export default function DetailsScreen({ route, navigation }) {
                           styles.dropdownMenuItem,
                           selectedSeason && selectedSeason.se === sItem.se && styles.dropdownMenuItemActive
                         ]}
-                        onPress={() => {
-                          setSelectedSeason(sItem);
-                          setShowSeasonDropdown(false);
-                        }}
+                        onPress={() => handleSeasonSelect(sItem)}
                       >
                         <Text style={styles.dropdownMenuItemText}>
                           Season {String(sItem.se).padStart(2, '0')}
@@ -202,26 +270,17 @@ export default function DetailsScreen({ route, navigation }) {
 
             {/* Horizontal Scrolling Episodes List */}
             <Text style={styles.epTitle}>Episodes</Text>
-            <ScrollView 
-              horizontal 
+            <ScrollView
+              horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.episodeScrollRow}
             >
               {episodesForSelectedSeason.map((epNum) => (
-                <TouchableOpacity
+                <EpisodeButton
                   key={epNum}
-                  style={styles.episodeSquare}
-                  activeOpacity={0.7}
-                  onPress={() => navigation.navigate('Player', { 
-                    id: details.id, 
-                    title: details.title,
-                    season: selectedSeason.se, 
-                    episode: epNum,
-                    defaultLanguage: details.audioLanguages && details.audioLanguages[0]
-                  })}
-                >
-                  <Text style={styles.episodeSquareText}>{padEpisodeNumber(epNum)}</Text>
-                </TouchableOpacity>
+                  epNum={epNum}
+                  onPress={getEpisodeHandler(epNum)}
+                />
               ))}
             </ScrollView>
           </View>
@@ -234,6 +293,8 @@ export default function DetailsScreen({ route, navigation }) {
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -244,7 +305,7 @@ const styles = StyleSheet.create({
   },
   posterContainer: {
     width: width,
-    height: width * 0.9, // Shorter poster height layout
+    height: width * 0.9,
     position: 'relative',
     backgroundColor: '#15151A',
   },
@@ -301,7 +362,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   typeBadgeText: {
-    color: '#F87171', // Light red
+    color: '#F87171',
     fontSize: 12,
     fontWeight: '700',
   },

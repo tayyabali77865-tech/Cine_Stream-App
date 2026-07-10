@@ -14,7 +14,13 @@
         "buildType": "apk"
       }
     },
-    "production": {}
+    "production": {
+      "android": {
+        "buildType": "app-bundle",
+        "enableProguardInReleaseBuilds": true,
+        "enableShrinkResources": true
+      }
+    }
   },
   "submit": {
     "production": {}

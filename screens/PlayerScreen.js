@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useReducer } from 'react';
 import {
   StyleSheet,
   Text,
@@ -17,12 +17,12 @@ import { apiService } from '../services/apiService';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 
-// ─── screen dimensions ───────────────────────────────────────────────────────
+// ─── Screen Dimensions ────────────────────────────────────────────────────────
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const VIDEO_HEIGHT = Math.round(SCREEN_HEIGHT * 0.40); // 40% of screen height
+const VIDEO_HEIGHT = Math.round(SCREEN_HEIGHT * 0.40);
 
-// ─── helpers ────────────────────────────────────────────────────────────────
+// ─── Pure Helpers (module-level) ──────────────────────────────────────────────
 
 const sanitizeFilename = (str) => str.replace(/[^a-zA-Z0-9_\-\.]/g, '_').substring(0, 80);
 
@@ -34,61 +34,143 @@ const formatEta = (seconds) => {
   return `${m}m ${s < 10 ? '0' : ''}${s}s`;
 };
 
-// ────────────────────────────────────────────────────────────────────────────
+const parseSizeToBytes = (sizeStr = '') => {
+  const m = sizeStr.match(/([\d.]+)\s*(GB|MB|KB)/i);
+  if (!m) return 0;
+  const n = parseFloat(m[1]);
+  const u = m[2].toUpperCase();
+  if (u === 'GB') return n * 1024 * 1024 * 1024;
+  if (u === 'MB') return n * 1024;
+  if (u === 'KB') return n * 1024;
+  return 0;
+};
+
+// ─── Download State Reducer ───────────────────────────────────────────────────
+// Batches all download state into a single object so cancelDownload, etc.
+// only triggers ONE re-render instead of 7 sequential setState calls.
+
+const INITIAL_DOWNLOAD_STATE = {
+  downloading: false,
+  isPaused: false,
+  offlinePaused: false,
+  progress: 0,
+  downloadedMB: 0,
+  totalMB: 0,
+  speedMB: '0.0',
+  eta: '--',
+  selectedQuality: null,
+};
+
+function downloadReducer(state, action) {
+  switch (action.type) {
+    case 'START':
+      return {
+        ...INITIAL_DOWNLOAD_STATE,
+        downloading: true,
+        selectedQuality: action.quality,
+      };
+    case 'CANCEL':
+      return { ...INITIAL_DOWNLOAD_STATE };
+    case 'PAUSE':
+      return { ...state, isPaused: true, speedMB: '0.0', eta: 'Paused' };
+    case 'RESUME':
+      return { ...state, isPaused: false, offlinePaused: false };
+    case 'INTERRUPTED':
+      return { ...state, offlinePaused: true, speedMB: '0.0', eta: 'Waiting for network...' };
+    case 'RESTORED':
+      return { ...state, offlinePaused: false };
+    case 'PROGRESS':
+      return {
+        ...state,
+        progress: action.progress,
+        downloadedMB: action.downloadedMB,
+        totalMB: action.totalMB,
+        speedMB: action.speedMB !== undefined ? action.speedMB : state.speedMB,
+        eta: action.eta !== undefined ? action.eta : state.eta,
+      };
+    case 'COMPLETE':
+      return { ...INITIAL_DOWNLOAD_STATE, progress: 1 };
+    default:
+      return state;
+  }
+}
+
+// ─── Stream State Reducer ─────────────────────────────────────────────────────
+
+const INITIAL_STREAM_STATE = { loading: true, error: null, sources: null };
+
+function streamReducer(state, action) {
+  switch (action.type) {
+    case 'LOADING': return { loading: true, error: null, sources: null };
+    case 'SUCCESS': return { loading: false, error: null, sources: action.sources };
+    case 'ERROR':   return { loading: false, error: action.error, sources: null };
+    default:        return state;
+  }
+}
+
+// ─── Quality Modal State Reducer ──────────────────────────────────────────────
+
+const INITIAL_QUALITY_STATE = { visible: false, loading: false, qualities: [], error: null, referer: null };
+
+function qualityReducer(state, action) {
+  switch (action.type) {
+    case 'OPEN':    return { visible: true, loading: true, qualities: [], error: null, referer: null };
+    case 'LOADED':  return { ...state, loading: false, qualities: action.qualities, referer: action.referer };
+    case 'ERROR':   return { ...state, loading: false, error: action.error };
+    case 'CLOSE':   return { ...state, visible: false };
+    default:        return state;
+  }
+}
+
+// ─── Player Screen ────────────────────────────────────────────────────────────
 
 export default function PlayerScreen({ route, navigation }) {
   const { id, title, season, episode, defaultLanguage } = route.params;
 
-  // ── stream state ──
-  const [streamSources, setStreamSources] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [activeLanguage] = useState(defaultLanguage || 'Hindi');
+  const activeLanguage = defaultLanguage || 'Hindi';
 
-  // ── download UI state ──
-  const [showQualityModal, setShowQualityModal] = useState(false);
-  const [qualitiesLoading, setQualitiesLoading] = useState(false);
-  const [qualities, setQualities] = useState([]);   // [{quality, size, url}]
-  const [qualityError, setQualityError] = useState(null);
+  // ── Reducers replace multiple useState calls ──────────────────────────────
+  const [streamState, dispatchStream] = useReducer(streamReducer, INITIAL_STREAM_STATE);
+  const [dlState, dispatchDl] = useReducer(downloadReducer, INITIAL_DOWNLOAD_STATE);
+  const [qualityState, dispatchQuality] = useReducer(qualityReducer, INITIAL_QUALITY_STATE);
 
-  // ── active download state ──
-  const [downloading, setDownloading] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [offlinePaused, setOfflinePaused] = useState(false);
-  const [progress, setProgress] = useState(0);          // 0–1
-  const [downloadedMB, setDownloadedMB] = useState(0);
-  const [totalMB, setTotalMB] = useState(0);
-  const [speedMB, setSpeedMB] = useState('0.0');
-  const [eta, setEta] = useState('--');
-  const [selectedQuality, setSelectedQuality] = useState(null); // {quality, size, url}
-  const [downloadReferer, setDownloadReferer] = useState(null);
+  // ── Refs (no re-render needed) ────────────────────────────────────────────
+  const downloadRef        = useRef(null);
+  const resumeSnapshotRef  = useRef(null);
+  const lastTs             = useRef(0);
+  const lastBytes          = useRef(0);
+  const offlineTimerRef    = useRef(null);
+  const offlineAbortRef    = useRef(null); // AbortController for google HEAD check
+  // Ref to current downloading flag — avoids stale closure in backAction
+  const downloadingRef     = useRef(false);
 
-  // ── refs (no re-render needed) ──
-  const downloadRef = useRef(null);        // FileSystem.DownloadResumable
-  const resumeSnapshotRef = useRef(null);  // saved from pauseAsync()
-  const lastTs = useRef(0);
-  const lastBytes = useRef(0);
-  const offlineTimerRef = useRef(null);
+  // Keep downloadingRef in sync with dlState
+  downloadingRef.current = dlState.downloading;
 
-  // ── derived ──
+  // ── Derived ───────────────────────────────────────────────────────────────
   const videoTitle = title
     ? (season
       ? `${title} - S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
       : title)
     : 'Video';
 
-  // ── mount / unmount ──────────────────────────────────────────────────────
+  // ── Mount / Unmount ───────────────────────────────────────────────────────
   useEffect(() => {
     loadStream();
 
+    // backAction reads downloadingRef (not stale closure over dlState.downloading)
     const backAction = () => {
-      if (downloading) {
+      if (downloadingRef.current) {
         Alert.alert(
           'Active Download',
           'Leaving will cancel the current download. Continue?',
           [
             { text: 'Stay', style: 'cancel' },
-            { text: 'Cancel & Exit', style: 'destructive', onPress: () => { cancelDownload(); navigation.goBack(); } }
+            {
+              text: 'Cancel & Exit',
+              style: 'destructive',
+              onPress: () => { cancelDownload(); navigation.goBack(); }
+            }
           ]
         );
         return true;
@@ -96,6 +178,7 @@ export default function PlayerScreen({ route, navigation }) {
       navigation.goBack();
       return true;
     };
+
     const sub = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => {
       sub.remove();
@@ -104,36 +187,29 @@ export default function PlayerScreen({ route, navigation }) {
         downloadRef.current.cancelAsync().catch(() => {});
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── stream loader ────────────────────────────────────────────────────────
-  const loadStream = async () => {
+  // ── Stream Loader ─────────────────────────────────────────────────────────
+  const loadStream = useCallback(async () => {
     try {
-      setLoading(true);
-      setError(null);
+      dispatchStream({ type: 'LOADING' });
       const sources = await apiService.getStreamSources(id, season, episode, activeLanguage);
-      setStreamSources(sources);
+      dispatchStream({ type: 'SUCCESS', sources });
     } catch (e) {
       console.error('[Player] stream error:', e);
-      setError('Could not load stream. Please try again.');
-    } finally {
-      setLoading(false);
+      dispatchStream({ type: 'ERROR', error: 'Could not load stream. Please try again.' });
     }
-  };
+  }, [id, season, episode, activeLanguage]);
 
-  // ── quality loader ───────────────────────────────────────────────────────
-  const openDownloadModal = async () => {
-    setShowQualityModal(true);
-    setQualitiesLoading(true);
-    setQualityError(null);
-    setQualities([]);
+  // ── Quality Loader ────────────────────────────────────────────────────────
+  const openDownloadModal = useCallback(async () => {
+    dispatchQuality({ type: 'OPEN' });
 
-    // 1. Try pre-fetched qualities from stream sources load (instant & reliable)
-    if (streamSources && streamSources.qualities && streamSources.qualities.length > 0) {
-      console.log('[Player] using pre-resolved download qualities');
-      setQualities(streamSources.qualities);
-      setDownloadReferer(streamSources.referer || null);
-      setQualitiesLoading(false);
+    // 1. Use pre-fetched qualities from stream sources (instant & reliable)
+    const src = streamState.sources;
+    if (src && src.qualities && src.qualities.length > 0) {
+      dispatchQuality({ type: 'LOADED', qualities: src.qualities, referer: src.referer || null });
       return;
     }
 
@@ -141,90 +217,82 @@ export default function PlayerScreen({ route, navigation }) {
     try {
       const data = await apiService.getDownloadQualities(id, season || '', episode || '', activeLanguage);
       if (data.qualities && data.qualities.length > 0) {
-        setQualities(data.qualities);
-        setDownloadReferer(data.referer || null);
-        setQualitiesLoading(false);
+        dispatchQuality({ type: 'LOADED', qualities: data.qualities, referer: data.referer || null });
         return;
       }
     } catch (e) {
       console.warn('[Player] API qualities fetch failed, trying fallback:', e.message);
     }
 
-    // 3. Ultimate Fallback: use currently playing videoUrl
-    if (streamSources && streamSources.videoUrl) {
-      console.log('[Player] falling back to active streaming video URL');
-      const qualityMatch = streamSources.videoUrl.match(/(\d{3,4}p)/i);
+    // 3. Fallback to currently playing videoUrl
+    if (src && src.videoUrl) {
+      const qualityMatch = src.videoUrl.match(/(\d{3,4}p)/i);
       const qualityLabel = qualityMatch ? qualityMatch[1].toUpperCase() : '720P';
-      setQualities([{
-        quality: qualityLabel,
-        size: 'Auto',
-        url: streamSources.videoUrl
-      }]);
-      setDownloadReferer(streamSources.referer || null);
+      dispatchQuality({
+        type: 'LOADED',
+        qualities: [{ quality: qualityLabel, size: 'Auto', url: src.videoUrl }],
+        referer: src.referer || null,
+      });
     } else {
-      setQualityError('Could not fetch download options for this video.');
+      dispatchQuality({ type: 'ERROR', error: 'Could not fetch download options for this video.' });
     }
-    setQualitiesLoading(false);
-  };
+  }, [streamState.sources, id, season, episode, activeLanguage]);
 
-  // ── progress callback factory ────────────────────────────────────────────
-  const makeCallback = (estBytes) => (progressData) => {
-    const written = progressData.totalBytesWritten || 0;
-    const expected = progressData.totalBytesExpectedToWrite > 0
+  // ── Progress Callback Factory ─────────────────────────────────────────────
+  const makeCallback = useCallback((estBytes) => (progressData) => {
+    const written   = progressData.totalBytesWritten || 0;
+    const expected  = progressData.totalBytesExpectedToWrite > 0
       ? progressData.totalBytesExpectedToWrite
       : estBytes;
-
     const prog = expected > 0 ? Math.min(written / expected, 1) : 0;
-    setProgress(prog);
-    setDownloadedMB(+(written / (1024 * 1024)).toFixed(1));
-    setTotalMB(+(expected / (1024 * 1024)).toFixed(1));
 
     const now = Date.now();
-    const dt = (now - lastTs.current) / 1000;
+    const dt  = (now - lastTs.current) / 1000;
+
     if (dt >= 0.8) {
-      const db = written - lastBytes.current;
+      const db  = written - lastBytes.current;
       const spd = db / dt / (1024 * 1024);
-      setSpeedMB(spd.toFixed(1));
-      if (spd > 0) setEta(formatEta((expected - written) / (spd * 1024 * 1024)));
-      lastTs.current = now;
+      lastTs.current    = now;
       lastBytes.current = written;
+      dispatchDl({
+        type:        'PROGRESS',
+        progress:    prog,
+        downloadedMB: +(written / (1024 * 1024)).toFixed(1),
+        totalMB:     +(expected / (1024 * 1024)).toFixed(1),
+        speedMB:     spd.toFixed(1),
+        eta:         spd > 0 ? formatEta((expected - written) / (spd * 1024 * 1024)) : '--',
+      });
+    } else {
+      // Still update progress bar even if not updating speed stats
+      dispatchDl({
+        type:        'PROGRESS',
+        progress:    prog,
+        downloadedMB: +(written / (1024 * 1024)).toFixed(1),
+        totalMB:     +(expected / (1024 * 1024)).toFixed(1),
+      });
     }
-  };
+  }, []);
 
-  // ── start download ───────────────────────────────────────────────────────
-  const startDownload = async (quality) => {
-    setShowQualityModal(false);
+  // ── Start Download ────────────────────────────────────────────────────────
+  const startDownload = useCallback(async (quality) => {
+    dispatchQuality({ type: 'CLOSE' });
 
-    // Request permission FIRST
     const { status } = await MediaLibrary.requestPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Required', 'Storage permission is needed to save videos to your gallery.');
       return;
     }
 
-    setSelectedQuality(quality);
-    setDownloading(true);
-    setIsPaused(false);
-    setOfflinePaused(false);
-    setProgress(0);
-    setDownloadedMB(0);
-    setTotalMB(0);
-    setSpeedMB('0.0');
-    setEta('--');
-    resumeSnapshotRef.current = null;
+    dispatchDl({ type: 'START', quality });
 
-    // Estimate bytes from size string (e.g. "764.2 MB", "1.2 GB")
     const estBytes = parseSizeToBytes(quality.size);
+    const ext      = quality.url.split('?')[0].split('.').pop()?.split('/').pop() || 'mp4';
+    const fileUri  = `${FileSystem.documentDirectory}${sanitizeFilename(videoTitle)}_${quality.quality}.${ext}`;
 
-    const ext = quality.url.split('?')[0].split('.').pop()?.split('/').pop() || 'mp4';
-    const fileUri = `${FileSystem.documentDirectory}${sanitizeFilename(videoTitle)}_${quality.quality}.${ext}`;
-
-    lastTs.current = Date.now();
+    lastTs.current    = Date.now();
     lastBytes.current = 0;
 
-    const cb = makeCallback(estBytes);
-
-    const referer = downloadReferer || 'https://netmirror.global/';
+    const referer = qualityState.referer || 'https://netmirror.global/';
     downloadRef.current = FileSystem.createDownloadResumable(
       quality.url,
       fileUri,
@@ -234,91 +302,93 @@ export default function PlayerScreen({ route, navigation }) {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         }
       },
-      cb
+      makeCallback(estBytes)
     );
 
     await runDownload(fileUri);
-  };
+  }, [videoTitle, qualityState.referer, makeCallback]);
 
-  // ── core download runner (called by start + resume) ──────────────────────
-  const runDownload = async (fileUri) => {
+  // ── Core Download Runner ──────────────────────────────────────────────────
+  const runDownload = useCallback(async (fileUri) => {
     try {
       const result = await downloadRef.current.downloadAsync();
       if (result && result.uri) {
         await MediaLibrary.saveToLibraryAsync(result.uri);
         await FileSystem.deleteAsync(result.uri, { idempotent: true });
-        setDownloading(false);
-        setProgress(1);
+        dispatchDl({ type: 'COMPLETE' });
         Alert.alert('✅ Download Complete', `"${videoTitle}" saved to your gallery!`);
       }
     } catch (e) {
-      // Network may have dropped — save resume snapshot and poll
       console.warn('[Download] interrupted:', e.message);
       await handleInterruption(fileUri);
     }
-  };
+  }, [videoTitle]);
 
-  // ── interruption handler ─────────────────────────────────────────────────
-  const handleInterruption = async (fileUri) => {
-    setOfflinePaused(true);
-    setSpeedMB('0.0');
-    setEta('Waiting for network...');
+  // ── Interruption Handler ──────────────────────────────────────────────────
+  const handleInterruption = useCallback(async (fileUri) => {
+    dispatchDl({ type: 'INTERRUPTED' });
     clearOfflineTimer();
 
     offlineTimerRef.current = setInterval(async () => {
+      // Use AbortController so the fetch is cancelled if component unmounts
+      const controller = new AbortController();
+      offlineAbortRef.current = controller;
       try {
-        const res = await fetch('https://www.google.com', { method: 'HEAD' });
+        const res = await fetch('https://www.google.com', {
+          method: 'HEAD',
+          signal: controller.signal,
+        });
         if (res.ok || res.status < 500) {
           clearOfflineTimer();
-          setOfflinePaused(false);
-          // Rebuild resumable from saved snapshot
+          dispatchDl({ type: 'RESTORED' });
           const snap = resumeSnapshotRef.current;
           if (snap && fileUri) {
             downloadRef.current = new FileSystem.DownloadResumable(
               snap.url,
               snap.fileUri,
               snap.options,
-              makeCallback(parseSizeToBytes(selectedQuality?.size || '0')),
+              makeCallback(parseSizeToBytes(dlState.selectedQuality?.size || '0')),
               snap.resumeData
             );
             await runDownload(fileUri);
           }
         }
-      } catch (_) { /* still offline */ }
+      } catch (_) { /* still offline or aborted */ }
     }, 4000);
-  };
+  }, [makeCallback, dlState.selectedQuality]);
 
-  const clearOfflineTimer = () => {
+  const clearOfflineTimer = useCallback(() => {
     if (offlineTimerRef.current) {
       clearInterval(offlineTimerRef.current);
       offlineTimerRef.current = null;
     }
-  };
+    // Abort any in-flight HEAD check
+    if (offlineAbortRef.current) {
+      offlineAbortRef.current.abort();
+      offlineAbortRef.current = null;
+    }
+  }, []);
 
-  // ── pause ────────────────────────────────────────────────────────────────
-  const pauseDownload = async () => {
+  // ── Pause ─────────────────────────────────────────────────────────────────
+  const pauseDownload = useCallback(async () => {
     if (!downloadRef.current) return;
     try {
-      // pauseAsync() returns the resumable snapshot; store it
       const snapshot = await downloadRef.current.pauseAsync();
       resumeSnapshotRef.current = snapshot;
-      setIsPaused(true);
-      setSpeedMB('0.0');
-      setEta('Paused');
+      dispatchDl({ type: 'PAUSE' });
     } catch (e) {
       console.error('[Download] pause error:', e);
     }
-  };
+  }, []);
 
-  // ── resume ───────────────────────────────────────────────────────────────
-  const resumeDownload = async () => {
+  // ── Resume ────────────────────────────────────────────────────────────────
+  const resumeDownload = useCallback(async () => {
     const snap = resumeSnapshotRef.current;
     if (!snap) return;
-    setIsPaused(false);
-    setOfflinePaused(false);
+    dispatchDl({ type: 'RESUME' });
     lastTs.current = Date.now();
 
-    const estBytes = parseSizeToBytes(selectedQuality?.size || '0');
+    const estBytes = parseSizeToBytes(dlState.selectedQuality?.size || '0');
     downloadRef.current = new FileSystem.DownloadResumable(
       snap.url,
       snap.fileUri,
@@ -327,41 +397,23 @@ export default function PlayerScreen({ route, navigation }) {
       snap.resumeData
     );
     await runDownload(snap.fileUri);
-  };
+  }, [dlState.selectedQuality, makeCallback, runDownload]);
 
-  // ── cancel ───────────────────────────────────────────────────────────────
-  const cancelDownload = async () => {
+  // ── Cancel ────────────────────────────────────────────────────────────────
+  const cancelDownload = useCallback(async () => {
     clearOfflineTimer();
     if (downloadRef.current) {
       try { await downloadRef.current.cancelAsync(); } catch (_) {}
     }
-    downloadRef.current = null;
+    downloadRef.current      = null;
     resumeSnapshotRef.current = null;
-    setDownloading(false);
-    setIsPaused(false);
-    setOfflinePaused(false);
-    setProgress(0);
-    setSelectedQuality(null);
-    setDownloadedMB(0);
-    setTotalMB(0);
-    setSpeedMB('0.0');
-    setEta('--');
-  };
+    // Single dispatch — one re-render instead of 7
+    dispatchDl({ type: 'CANCEL' });
+  }, [clearOfflineTimer]);
 
-  // ── utility: parse size string → bytes ───────────────────────────────────
-  const parseSizeToBytes = (sizeStr = '') => {
-    const m = sizeStr.match(/([\d.]+)\s*(GB|MB|KB)/i);
-    if (!m) return 0;
-    const n = parseFloat(m[1]);
-    const u = m[2].toUpperCase();
-    if (u === 'GB') return n * 1024 * 1024 * 1024;
-    if (u === 'MB') return n * 1024 * 1024;
-    if (u === 'KB') return n * 1024;
-    return 0;
-  };
+  // ── Render Guards ─────────────────────────────────────────────────────────
 
-  // ── render guards ────────────────────────────────────────────────────────
-  if (loading) {
+  if (streamState.loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#E50914" />
@@ -370,10 +422,10 @@ export default function PlayerScreen({ route, navigation }) {
     );
   }
 
-  if (error || !streamSources) {
+  if (streamState.error || !streamState.sources) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorText}>{error || 'Stream error.'}</Text>
+        <Text style={styles.errorText}>{streamState.error || 'Stream error.'}</Text>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
           <Text style={styles.backBtnText}>Go Back</Text>
         </TouchableOpacity>
@@ -381,7 +433,11 @@ export default function PlayerScreen({ route, navigation }) {
     );
   }
 
-  // ── render ───────────────────────────────────────────────────────────────
+  const { sources } = streamState;
+  const { downloading, isPaused, offlinePaused, progress, downloadedMB, totalMB, speedMB, eta, selectedQuality } = dlState;
+  const { visible: showQualityModal, loading: qualitiesLoading, qualities, error: qualityError } = qualityState;
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
       <StatusBar hidden />
@@ -389,9 +445,9 @@ export default function PlayerScreen({ route, navigation }) {
       {/* ── Video Player ── */}
       <Video
         source={{
-          uri: streamSources.videoUrl,
+          uri: sources.videoUrl,
           headers: {
-            Referer: streamSources.referer,
+            Referer: sources.referer,
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           }
         }}
@@ -401,7 +457,7 @@ export default function PlayerScreen({ route, navigation }) {
         shouldPlay
         onError={(err) => {
           console.error('[Player] video error:', err);
-          setError('Playback failed. The session may have expired.');
+          dispatchStream({ type: 'ERROR', error: 'Playback failed. The session may have expired.' });
         }}
       />
 
@@ -447,7 +503,7 @@ export default function PlayerScreen({ route, navigation }) {
         visible={showQualityModal}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowQualityModal(false)}
+        onRequestClose={() => dispatchQuality({ type: 'CLOSE' })}
       >
         <View style={styles.overlay}>
           <View style={styles.modal}>
@@ -465,9 +521,10 @@ export default function PlayerScreen({ route, navigation }) {
               <Text style={styles.qualityError}>{qualityError}</Text>
             )}
 
-            {!qualitiesLoading && !qualityError && qualities.map((q, i) => (
+            {!qualitiesLoading && !qualityError && qualities.map((q) => (
               <TouchableOpacity
-                key={i}
+                // Use quality string as key — more stable than array index
+                key={q.quality}
                 id={`quality-option-${q.quality}`}
                 style={styles.qualityRow}
                 activeOpacity={0.7}
@@ -481,7 +538,7 @@ export default function PlayerScreen({ route, navigation }) {
             <TouchableOpacity
               id="close-quality-modal"
               style={styles.cancelRow}
-              onPress={() => setShowQualityModal(false)}
+              onPress={() => dispatchQuality({ type: 'CLOSE' })}
             >
               <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
@@ -496,7 +553,7 @@ export default function PlayerScreen({ route, navigation }) {
             <Text style={styles.progressTitle} numberOfLines={1}>{videoTitle}</Text>
             <Text style={styles.progressQuality}>{selectedQuality?.quality} · {selectedQuality?.size}</Text>
 
-            {/* Bar */}
+            {/* Progress Bar */}
             <View style={styles.barTrack}>
               <View style={[styles.barFill, { width: `${Math.round(progress * 100)}%` }]} />
             </View>
@@ -543,13 +600,11 @@ export default function PlayerScreen({ route, navigation }) {
   );
 }
 
-// ─── styles ──────────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#050507' },
-
   video: { width: '100%', height: VIDEO_HEIGHT },
-
   center: {
     flex: 1,
     backgroundColor: '#050507',
@@ -568,7 +623,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8,
   },
   backBtnText: { color: '#FFF', fontWeight: 'bold' },
-
   closeBtn: {
     position: 'absolute', top: 24, left: 20,
     backgroundColor: 'rgba(0,0,0,0.72)',
@@ -577,20 +631,15 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.15)', zIndex: 20,
   },
   closeBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
-
   panel: {
     flex: 1, backgroundColor: '#0F0F14',
     borderTopLeftRadius: 24, borderTopRightRadius: 24,
     marginTop: 20,
   },
   panelContent: { paddingHorizontal: 24, paddingTop: 28, paddingBottom: 40 },
-
-  mediaTitle: {
-    fontSize: 20, fontWeight: '800', color: '#FFF', marginBottom: 6,
-  },
+  mediaTitle: { fontSize: 20, fontWeight: '800', color: '#FFF', marginBottom: 6 },
   langLabel: { fontSize: 13, color: '#6B7280', marginBottom: 24 },
   langValue: { color: '#E50914', fontWeight: '700' },
-
   dlBtn: {
     backgroundColor: '#E50914',
     paddingVertical: 16, borderRadius: 14,
@@ -601,8 +650,6 @@ const styles = StyleSheet.create({
   },
   dlBtnDisabled: { backgroundColor: '#374151', shadowOpacity: 0, elevation: 0 },
   dlBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
-
-  // Modal
   overlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.78)',
     justifyContent: 'center', alignItems: 'center',
@@ -616,16 +663,10 @@ const styles = StyleSheet.create({
     fontSize: 19, fontWeight: '800', color: '#FFF',
     textAlign: 'center', marginBottom: 4,
   },
-  modalSub: {
-    fontSize: 12, color: '#6B7280',
-    textAlign: 'center', marginBottom: 20,
-  },
+  modalSub: { fontSize: 12, color: '#6B7280', textAlign: 'center', marginBottom: 20 },
   modalLoading: { alignItems: 'center', paddingVertical: 20 },
   modalLoadingText: { color: '#9CA3AF', marginTop: 8, fontSize: 13 },
-  qualityError: {
-    color: '#EF4444', textAlign: 'center',
-    fontSize: 13, paddingVertical: 16,
-  },
+  qualityError: { color: '#EF4444', textAlign: 'center', fontSize: 13, paddingVertical: 16 },
   qualityRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.04)',
@@ -637,8 +678,6 @@ const styles = StyleSheet.create({
   qualitySize: { color: '#A855F7', fontWeight: '700', fontSize: 13 },
   cancelRow: { paddingVertical: 14, alignItems: 'center', marginTop: 4 },
   cancelText: { color: '#6B7280', fontWeight: '600', fontSize: 14 },
-
-  // Progress
   progressContainer: {
     position: 'absolute', bottom: 20, left: 0, right: 0,
     backgroundColor: 'rgba(5,5,7,0.9)',
@@ -656,17 +695,14 @@ const styles = StyleSheet.create({
   },
   progressTitle: { fontSize: 15, fontWeight: '700', color: '#FFF', marginBottom: 2 },
   progressQuality: { fontSize: 12, color: '#A855F7', fontWeight: '600', marginBottom: 12 },
-
   barTrack: {
     height: 6, backgroundColor: 'rgba(255,255,255,0.1)',
     borderRadius: 3, overflow: 'hidden', marginBottom: 8,
   },
   barFill: { height: '100%', backgroundColor: '#E50914', borderRadius: 3 },
-
   statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   statsText: { color: '#E5E7EB', fontSize: 12, fontWeight: '500' },
   etaText: { color: '#9CA3AF', fontSize: 11, marginBottom: 14 },
-
   controls: { flexDirection: 'row', gap: 8 },
   ctrlBtn: {
     flex: 1, backgroundColor: 'rgba(255,255,255,0.07)',
