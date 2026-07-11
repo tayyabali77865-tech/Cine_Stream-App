@@ -122,11 +122,17 @@ app.use((req, res, next) => {
   next();
 });
 
-// HMAC Request Signature Authentication Middleware (Protecting all endpoints except public ones)
+// HMAC Request Signature Authentication Middleware (Protecting only backend api endpoints)
 app.use((req, res, next) => {
   const urlClean = req.originalUrl.split('?')[0];
-  // Allow root web interface, favicon, health check, and web page assets
-  if (urlClean === '/api/health' || urlClean === '/' || urlClean === '/admin' || urlClean === '/favicon.ico') {
+  
+  // Only protect API routes. Static web assets/web app routes are fully public.
+  if (!urlClean.startsWith('/api/')) {
+    return next();
+  }
+
+  // Exempt health check API endpoint
+  if (urlClean === '/api/health') {
     return next();
   }
 
