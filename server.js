@@ -80,7 +80,9 @@ const detailsCache = new LRUCacheWithSWR({
 });
 
 // Middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false
+}));
 app.use(compression());
 app.use(cors({
   origin: '*', // Adjust production CORS rules if needed
