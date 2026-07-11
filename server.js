@@ -122,8 +122,9 @@ app.use((req, res, next) => {
 
 // HMAC Request Signature Authentication Middleware (Protecting all endpoints except public ones)
 app.use((req, res, next) => {
+  const urlClean = req.originalUrl.split('?')[0];
   // Allow root web interface, favicon, health check, and web page assets
-  if (req.path === '/api/health' || req.path === '/' || req.path === '/admin' || req.path === '/favicon.ico') {
+  if (urlClean === '/api/health' || urlClean === '/' || urlClean === '/admin' || urlClean === '/favicon.ico') {
     return next();
   }
 
