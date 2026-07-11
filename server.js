@@ -180,6 +180,16 @@ const getHeaders = (referer = REFERER_URL) => ({
   'Upgrade-Insecure-Requests': '1'
 });
 
+function isDeleted(id) {
+  const idStr = String(id);
+  return adminDb.deletedIds.some(item => {
+    if (typeof item === 'object' && item !== null) {
+      return item.id === idStr;
+    }
+    return String(item) === idStr;
+  });
+}
+
 /**
  * Resilient API Fetch wrapper with Deduplication, Retries, Circuit Breaker, and Failover
  */
@@ -248,16 +258,6 @@ app.get('/api/trending', async (req, res) => {
     } else if (filter === 'South Indian') {
       queryParams = 'sort_by=date&dubbing=Tamil';
     }
-
-function isDeleted(id) {
-  const idStr = String(id);
-  return adminDb.deletedIds.some(item => {
-    if (typeof item === 'object' && item !== null) {
-      return item.id === idStr;
-    }
-    return String(item) === idStr;
-  });
-}
 
     if (category === 'Anime') {
       const endpoint = `/movies/filter?sort_by=date&country=Japan&items_per_page=30&page=${page}`;
