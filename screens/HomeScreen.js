@@ -29,8 +29,16 @@ const CARD_TOTAL_HEIGHT = CARD_POSTER_HEIGHT + CARD_TITLE_HEIGHT + 20; // +margi
 const SKELETON_DATA = Array.from({ length: 6 }, (_, i) => ({ id: `skeleton-${i}` }));
 
 // Filter and category lists — module-level constants
-const FILTER_LIST = ['Trending', 'Latest', 'Hollywood', 'Bollywood', 'Korean', 'Chinese', 'South Indian'];
-const CATEGORY_LIST = ['All', 'Movies', 'Series', 'Anime'];
+// Filters per category
+const FILTER_LIST_ALL    = ['Trending', 'Latest', 'Hollywood', 'Bollywood', 'Korean', 'Chinese', 'South Indian'];
+const FILTER_LIST_ANIME  = ['Trending', 'Latest', 'Hindi', 'English'];
+const CATEGORY_LIST      = ['All', 'Movies', 'Series', 'Anime'];
+
+// Helper: get filters for the active category
+function getFilterList(category) {
+  if (category === 'Anime') return FILTER_LIST_ANIME;
+  return FILTER_LIST_ALL;
+}
 
 // Language detection list — module-level constant
 const LANGUAGES = [
@@ -97,7 +105,18 @@ function applyClientSideFilter(list, filterName, categoryName) {
     filtered = filtered.filter(item => {
       const titleLower = item.title.toLowerCase();
       const countryLower = (item.country || '').toLowerCase();
+      const langLower = (item.language || '').toLowerCase();
 
+      // Language filters (used in Anime category)
+      if (filterName === 'Hindi') {
+        return langLower.includes('hindi') || titleLower.includes('hindi');
+      }
+      if (filterName === 'English') {
+        return langLower.includes('english') || titleLower.includes('english') ||
+               (countryLower === 'us' || countryLower === 'united states' || countryLower === 'uk');
+      }
+
+      // Regional filters (All/Movies/Series categories)
       if (filterName === 'Bollywood') {
         return countryLower === 'india' &&
                !titleLower.includes('tamil') &&
@@ -137,28 +156,21 @@ function applyClientSideFilter(list, filterName, categoryName) {
 
 function sortMediaList(list, isSearchActive, activeFilter) {
   return [...list].sort((a, b) => {
+    // Always sort by rating first (highest first)
+    const ratingA = parseFloat(a.rating) || 0;
+    const ratingB = parseFloat(b.rating) || 0;
+    if (ratingB !== ratingA) return ratingB - ratingA;
+
+    // Secondary: language priority (Hindi > English > others > Original)
     const langA = detectLanguage(a.title);
     const langB = detectLanguage(b.title);
-
     const getPriority = (lang) => {
       if (lang === 'Hindi') return 1;
       if (lang === 'English') return 2;
       if (lang === 'Original') return 4;
       return 3;
     };
-
-    const priorityA = getPriority(langA);
-    const priorityB = getPriority(langB);
-
-    if (priorityA !== priorityB) return priorityA - priorityB;
-
-    if (isSearchActive || activeFilter !== 'Trending') {
-      const ratingA = a.rating || 0;
-      const ratingB = b.rating || 0;
-      if (ratingB !== ratingA) return ratingB - ratingA;
-    }
-
-    return 0;
+    return getPriority(langA) - getPriority(langB);
   });
 }
 
@@ -576,7 +588,7 @@ export default function HomeScreen({ navigation }) {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.filterScroll}
           >
-            {FILTER_LIST.map((filterName) => {
+            {getFilterList(activeCategory).map((filterName) => {
               const isSelected = activeFilter === filterName;
               return (
                 <TouchableOpacity
