@@ -7,12 +7,38 @@ const crypto = require('crypto');
 const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
+const fs = require('fs');
+const path = require('path');
 const {
   DynamicMirrorManager,
   CircuitBreaker,
   RequestDeduplicator,
   LRUCacheWithSWR
 } = require('./services/cacheService');
+
+// Local Data Store for Deletions and Custom Play URLs
+const DB_FILE = path.join(__dirname, 'admin_db.json');
+let adminDb = { deletedIds: [], customOverrides: {} };
+
+function loadDb() {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      adminDb = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    }
+  } catch (err) {
+    console.error('Error reading admin_db.json database:', err.message);
+  }
+}
+
+function saveDb() {
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(adminDb, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Error writing admin_db.json database:', err.message);
+  }
+}
+
+loadDb();
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -94,9 +120,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// HMAC Request Signature Authentication Middleware (Protecting all endpoints except /api/health)
+// HMAC Request Signature Authentication Middleware (Protecting all endpoints except public ones)
 app.use((req, res, next) => {
-  if (req.path === '/api/health') {
+  // Allow root web interface, favicon, health check, and web page assets
+  if (req.path === '/api/health' || req.path === '/' || req.path === '/admin' || req.path === '/favicon.ico') {
     return next();
   }
 
@@ -217,16 +244,19 @@ app.get('/api/trending', async (req, res) => {
       const endpoint = `/movies/filter?sort_by=date&country=Japan&items_per_page=30&page=${page}`;
       const { value: data, status } = await catalogCache.get(endpoint);
       const results = data.results || [];
-      const mediaList = results.map(item => ({
-        id: item.id,
-        title: item.title ? item.title.trim() : 'Unknown Title',
-        poster: item.backdrop_path || 'https://placehold.co/300x450',
-        type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
-        releaseDate: item.release_date || 'N/A',
-        country: item.cn || '',
-        channel: item.channel || '',
-        rating: parseFloat(item.vote_average) || 0
-      }));
+      const mediaList = results
+        .filter(item => !adminDb.deletedIds.includes(String(item.id)))
+        .map(item => ({
+          id: item.id,
+          title: item.title ? item.title.trim() : 'Unknown Title',
+          poster: item.backdrop_path || 'https://placehold.co/300x450',
+          type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
+          releaseDate: item.release_date || 'N/A',
+          country: item.cn || '',
+          channel: item.channel || '',
+          rating: parseFloat(item.vote_average) || 0,
+          isCustom: !!adminDb.customOverrides[String(item.id)]
+        }));
 
       res.setHeader('X-Cache-Status', status);
       return res.json(mediaList);
@@ -242,16 +272,19 @@ app.get('/api/trending', async (req, res) => {
     const { value: data, status } = await catalogCache.get(endpoint);
     const results = data.results || [];
 
-    const mediaList = results.map(item => ({
-      id: item.id,
-      title: item.title ? item.title.trim() : 'Unknown Title',
-      poster: item.backdrop_path || 'https://placehold.co/300x450',
-      type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
-      releaseDate: item.release_date || 'N/A',
-      country: item.cn || '',
-      channel: item.channel || '',
-      rating: parseFloat(item.vote_average) || 0
-    }));
+    const mediaList = results
+      .filter(item => !adminDb.deletedIds.includes(String(item.id)))
+      .map(item => ({
+        id: item.id,
+        title: item.title ? item.title.trim() : 'Unknown Title',
+        poster: item.backdrop_path || 'https://placehold.co/300x450',
+        type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
+        releaseDate: item.release_date || 'N/A',
+        country: item.cn || '',
+        channel: item.channel || '',
+        rating: parseFloat(item.vote_average) || 0,
+        isCustom: !!adminDb.customOverrides[String(item.id)]
+      }));
 
     res.setHeader('X-Cache-Status', status);
     res.json(mediaList);
@@ -275,16 +308,19 @@ app.get('/api/search', async (req, res) => {
     const data = await fetchFromNetmirrorWithRetry(endpoint);
     const results = data.results || [];
 
-    const mediaList = results.map(item => ({
-      id: item.id,
-      title: item.title ? item.title.trim() : 'Unknown Title',
-      poster: item.backdrop_path || 'https://placehold.co/300x450',
-      type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
-      releaseDate: item.release_date || 'N/A',
-      country: item.cn || '',
-      channel: item.channel || '',
-      rating: parseFloat(item.vote_average) || 0
-    }));
+    const mediaList = results
+      .filter(item => !adminDb.deletedIds.includes(String(item.id)))
+      .map(item => ({
+        id: item.id,
+        title: item.title ? item.title.trim() : 'Unknown Title',
+        poster: item.backdrop_path || 'https://placehold.co/300x450',
+        type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
+        releaseDate: item.release_date || 'N/A',
+        country: item.cn || '',
+        channel: item.channel || '',
+        rating: parseFloat(item.vote_average) || 0,
+        isCustom: !!adminDb.customOverrides[String(item.id)]
+      }));
 
     res.json(mediaList);
   } catch (error) {
@@ -344,6 +380,18 @@ app.get('/api/stream/:id', async (req, res) => {
   const lang = req.query.lang || 'Hindi';
 
   try {
+    // A. Intercept if user has custom overridden URLs
+    const customLinks = adminDb.customOverrides[String(id)];
+    if (customLinks && customLinks.length > 0) {
+      console.log(`🎯 Serving custom URL overrides config for ID: ${id}`);
+      return res.json({
+        videoUrl: customLinks[0].url,
+        qualities: customLinks,
+        audioUrl: null,
+        referer: ''
+      });
+    }
+
     console.log(`📡 Resolving stream for ID: ${id} (Season ${se}, Episode ${ep}, Lang ${lang})`);
 
     const endpoint = `/movie/${id}`;
@@ -791,6 +839,53 @@ function parseWatchboxHtml(html) {
 
   return null;
 }
+
+// ─── ADMIN PANEL ROUTING ENDPOINTS ──────────────────────────────────────────
+
+// Serving static web interface on "/" and "/admin"
+app.get(['/', '/admin'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'netmirror_home.html'));
+});
+
+// CRUD Endpoint: DELETE Media Item (Removal)
+app.delete('/api/media/:id', (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ error: 'Missing ID parameter' });
+
+  const idStr = String(id);
+  if (!adminDb.deletedIds.includes(idStr)) {
+    adminDb.deletedIds.push(idStr);
+    saveDb();
+  }
+  res.json({ success: true, message: `Media ${id} successfully removed from frontend list.` });
+});
+
+// CRUD Endpoint: GET Custom URL Overrides for target media
+app.get('/api/media-custom/:id', (req, res) => {
+  const { id } = req.params;
+  const customLinks = adminDb.customOverrides[String(id)] || [];
+  res.json({ id, customLinks });
+});
+
+// CRUD Endpoint: POST Custom URL Overrides
+app.post('/api/media-custom/:id', (req, res) => {
+  const { id } = req.params;
+  const { customLinks } = req.body;
+
+  if (!id || !Array.isArray(customLinks)) {
+    return res.status(400).json({ error: 'Invalid input payload parameters' });
+  }
+
+  const idStr = String(id);
+  if (customLinks.length === 0) {
+    delete adminDb.customOverrides[idStr];
+  } else {
+    adminDb.customOverrides[idStr] = customLinks;
+  }
+  saveDb();
+
+  res.json({ success: true, message: `Custom links saved for Media ID ${id}.` });
+});
 
 // Telemetry & Health endpoint
 app.get('/api/health', async (req, res) => {
