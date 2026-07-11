@@ -7,11 +7,11 @@ const crypto = require('crypto');
 const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
-const { 
-  DynamicMirrorManager, 
-  CircuitBreaker, 
-  RequestDeduplicator, 
-  LRUCacheWithSWR 
+const {
+  DynamicMirrorManager,
+  CircuitBreaker,
+  RequestDeduplicator,
+  LRUCacheWithSWR
 } = require('./services/cacheService');
 
 const app = express();
@@ -77,7 +77,7 @@ app.use('/api/', limiter);
 app.use((req, res, next) => {
   req.id = crypto.randomUUID();
   req.startTime = Date.now();
-  
+
   res.on('finish', () => {
     const duration = Date.now() - req.startTime;
     console.log(JSON.stringify({
@@ -149,7 +149,7 @@ const getHeaders = (referer = REFERER_URL) => ({
  */
 async function fetchFromNetmirrorWithRetry(endpoint) {
   const maxRetries = parseInt(process.env.MAX_RETRIES || '3');
-  
+
   return deduplicator.execute(endpoint, async () => {
     if (!circuitBreaker.allow()) {
       throw new Error('Circuit breaker is open. Request to NetMirror blocked.');
@@ -159,7 +159,7 @@ async function fetchFromNetmirrorWithRetry(endpoint) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const activeMirror = mirrorManager.getActiveMirror();
       const url = `${activeMirror}${endpoint}`;
-      
+
       try {
         console.log(`[Fetcher] Sending request to NetMirror: ${url} (Attempt ${attempt}/${maxRetries})`);
         const res = await axios.get(url, {
@@ -171,12 +171,12 @@ async function fetchFromNetmirrorWithRetry(endpoint) {
           circuitBreaker.success();
           return res.data;
         }
-        
+
         throw new Error('Invalid response structure from NetMirror.');
       } catch (err) {
         lastError = err;
         console.warn(`[Fetcher] Attempt ${attempt} failed on mirror ${activeMirror}: ${err.message}`);
-        
+
         // Rotate mirror on failure
         mirrorManager.rotateMirror();
       }
@@ -195,10 +195,10 @@ app.get('/api/trending', async (req, res) => {
   const filter = req.query.filter || 'Latest';
   const category = req.query.category || 'All';
   const cacheKey = `${category}_${filter}_${page}`;
-  
+
   try {
     let queryParams = 'sort_by=date&dubbing=Hindi';
-    
+
     if (filter === 'Trending') {
       queryParams = 'sort_by=date&dubbing=Hindi';
     } else if (filter === 'Hollywood') {
@@ -227,7 +227,7 @@ app.get('/api/trending', async (req, res) => {
         channel: item.channel || '',
         rating: parseFloat(item.vote_average) || 0
       }));
-      
+
       res.setHeader('X-Cache-Status', status);
       return res.json(mediaList);
     }
@@ -237,11 +237,11 @@ app.get('/api/trending', async (req, res) => {
     } else if (category === 'Series') {
       queryParams += '&type=2';
     }
-    
+
     const endpoint = `/movies/filter?${queryParams}&items_per_page=30&page=${page}`;
     const { value: data, status } = await catalogCache.get(endpoint);
     const results = data.results || [];
-    
+
     const mediaList = results.map(item => ({
       id: item.id,
       title: item.title ? item.title.trim() : 'Unknown Title',
@@ -268,13 +268,13 @@ app.get('/api/search', async (req, res) => {
   const query = req.query.q;
   const page = req.query.page || 0;
   if (!query) return res.json([]);
-  
+
   try {
     const formattedQuery = encodeURIComponent(query.trim()).replace(/%20/g, '+');
     const endpoint = `/search2/${formattedQuery}?page=${page}`;
     const data = await fetchFromNetmirrorWithRetry(endpoint);
     const results = data.results || [];
-    
+
     const mediaList = results.map(item => ({
       id: item.id,
       title: item.title ? item.title.trim() : 'Unknown Title',
@@ -302,13 +302,13 @@ app.get('/api/details/:id', async (req, res) => {
     const endpoint = `/movie/${id}`;
     const { value: data, status } = await detailsCache.get(endpoint);
     const results = data.results || [];
-    
+
     if (results.length === 0) {
       return res.status(404).json({ error: 'Movie details not found.' });
     }
 
     const item = results[0];
-    
+
     const alternateDubs = [];
     const titleStr = item.title ? String(item.title) : 'Unknown Title';
     const titleLower = titleStr.toLowerCase();
@@ -342,10 +342,10 @@ app.get('/api/stream/:id', async (req, res) => {
   const se = req.query.season || '1';
   const ep = req.query.episode || '1';
   const lang = req.query.lang || 'Hindi';
-  
+
   try {
     console.log(`📡 Resolving stream for ID: ${id} (Season ${se}, Episode ${ep}, Lang ${lang})`);
-    
+
     const endpoint = `/movie/${id}`;
     const { value: detailsData } = await detailsCache.get(endpoint);
     const results = detailsData.results || [];
@@ -402,7 +402,7 @@ app.get('/api/stream/:id', async (req, res) => {
         if (resolvedVideoUrl) {
           let sizeLabel = 'N/A';
           if (sParamMatch) {
-            try { sizeLabel = Buffer.from(sParamMatch[1], 'base64').toString('ascii').trim(); } catch (_) {}
+            try { sizeLabel = Buffer.from(sParamMatch[1], 'base64').toString('ascii').trim(); } catch (_) { }
           }
           const qualityMatch = (rawEmbedUrl + resolvedVideoUrl + (item.title || '')).match(/(\d{3,4}p)/i);
           resolvedQualities = [{
@@ -431,10 +431,10 @@ app.get('/api/stream/:id', async (req, res) => {
       const baseTitle = item.title.replace(/\[.*?\]/g, '').trim();
       const searchUrl = `/search2/${encodeURIComponent(baseTitle)}?page=0`;
       const searchRes = await fetchFromNetmirrorWithRetry(searchUrl).catch(() => null);
-      
+
       if (searchRes && searchRes.results) {
         const alternateItems = searchRes.results.filter(resItem => String(resItem.id) !== String(targetId));
-        
+
         for (const altItem of alternateItems) {
           console.log(`🔄 Attempting recovery with alternate ID: ${altItem.id} ("${altItem.title}")`);
           try {
@@ -442,7 +442,7 @@ app.get('/api/stream/:id', async (req, res) => {
             const altResults = altDetailsRes.results || [];
             if (altResults.length > 0) {
               const altItemMeta = altResults[0];
-              
+
               if (altItemMeta.embed) {
                 const rawEmbedUrl = altItemMeta.embed;
                 const urlParamMatch = rawEmbedUrl.match(/url=([^&]+)/);
@@ -453,7 +453,7 @@ app.get('/api/stream/:id', async (req, res) => {
                   if (resolvedVideoUrl) {
                     let sizeLabel = 'N/A';
                     if (sParamMatch) {
-                      try { sizeLabel = Buffer.from(sParamMatch[1], 'base64').toString('ascii').trim(); } catch (_) {}
+                      try { sizeLabel = Buffer.from(sParamMatch[1], 'base64').toString('ascii').trim(); } catch (_) { }
                     }
                     const qualityMatch = (rawEmbedUrl + resolvedVideoUrl + (altItemMeta.title || '')).match(/(\d{3,4}p)/i);
                     resolvedQualities = [{
@@ -464,7 +464,7 @@ app.get('/api/stream/:id', async (req, res) => {
                   }
                 }
               }
-              
+
               if (!resolvedVideoUrl && altItemMeta.dp) {
                 const altNa = Buffer.from(altItemMeta.title ? altItemMeta.title.trim() : 'Video').toString('base64');
                 const watchboxResult = await resolveWatchboxStream(altItem.id, targetSe, targetEp, altItemMeta.dp, altNa);
@@ -473,7 +473,7 @@ app.get('/api/stream/:id', async (req, res) => {
                   resolvedQualities = watchboxResult.qualities || [];
                 }
               }
-              
+
               if (resolvedVideoUrl) {
                 console.log(`🔥 Recovery SUCCESS! Using stream from alternate ID ${altItem.id}`);
                 break;
@@ -574,7 +574,7 @@ app.get('/api/download-qualities/:id', async (req, res) => {
         if (directUrl) {
           let sizeLabel = 'N/A';
           if (sParamMatch) {
-            try { sizeLabel = Buffer.from(sParamMatch[1], 'base64').toString('ascii').trim(); } catch (_) {}
+            try { sizeLabel = Buffer.from(sParamMatch[1], 'base64').toString('ascii').trim(); } catch (_) { }
           }
           const qualityMatch = (rawEmbedUrl + directUrl + (item.title || '')).match(/(\d{3,4}p)/i);
           qualities.push({
@@ -725,22 +725,22 @@ async function resolveWatchboxStream(id, se, ep, dp, na) {
     try {
       const watchboxBaseUrl = `https://${domain}/play/watchbox.php?id=${id}&se=${se}&ep=${ep}&dp=${dp}&na=${encodeURIComponent(na)}&exten=1`;
       const dummyUrl = `${watchboxBaseUrl}&ts=0&sig=0`;
-      
-      const dummyRes = await axios.get(dummyUrl, { 
+
+      const dummyRes = await axios.get(dummyUrl, {
         headers: getHeaders(netmirrorReferer),
         timeout: 2500
       });
-      
+
       let serverTime = null;
       const timeMatch = dummyRes.data.match(/Time not Found\.<br><br>(\d+)/);
       let htmlContent = '';
-      
+
       if (timeMatch) {
         serverTime = timeMatch[1];
         const signature = crypto.createHmac('sha256', HM_SECRET).update(String(serverTime)).digest('hex');
         const authUrl = `${watchboxBaseUrl}&ts=${serverTime}&sig=${signature}`;
-        
-        const authRes = await axios.get(authUrl, { 
+
+        const authRes = await axios.get(authUrl, {
           headers: getHeaders(netmirrorReferer),
           timeout: 3000
         });
@@ -748,11 +748,11 @@ async function resolveWatchboxStream(id, se, ep, dp, na) {
       } else {
         htmlContent = dummyRes.data;
       }
-      
+
       if (htmlContent.includes('Server Buzy') || htmlContent.includes('Not Found. or Come from listed Website.')) {
         throw new Error(`Domain ${domain} returned busy/not found.`);
       }
-      
+
       const resolvedUrl = parseWatchboxHtml(htmlContent);
       if (resolvedUrl) {
         console.log(`[Watchbox] Fast resolution SUCCESS on domain: ${domain}`);
@@ -779,7 +779,7 @@ async function resolveWatchboxStream(id, se, ep, dp, na) {
  */
 function parseWatchboxHtml(html) {
   const $ = cheerio.load(html);
-  
+
   const sourceSrc = $('video source').attr('src');
   if (sourceSrc) return sourceSrc;
 
@@ -798,7 +798,7 @@ app.get('/api/health', async (req, res) => {
   const activeMirror = mirrorManager.getActiveMirror();
   const allMirrors = mirrorManager.getMirrors();
   const memory = process.memoryUsage();
-  
+
   res.json({
     status: 'ok',
     uptime: `${uptime}s`,
@@ -823,7 +823,7 @@ setInterval(() => {
 // Server Listen
 app.listen(PORT, '0.0.0.0', async () => {
   console.log(`\n🚀 Production Scraper Server active on http://0.0.0.0:${PORT}/api`);
-  
+
   // Start Mirror discovery
   await mirrorManager.start();
 

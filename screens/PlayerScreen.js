@@ -103,8 +103,8 @@ function streamReducer(state, action) {
   switch (action.type) {
     case 'LOADING': return { loading: true, error: null, sources: null };
     case 'SUCCESS': return { loading: false, error: null, sources: action.sources };
-    case 'ERROR':   return { loading: false, error: action.error, sources: null };
-    default:        return state;
+    case 'ERROR': return { loading: false, error: action.error, sources: null };
+    default: return state;
   }
 }
 
@@ -114,11 +114,11 @@ const INITIAL_QUALITY_STATE = { visible: false, loading: false, qualities: [], e
 
 function qualityReducer(state, action) {
   switch (action.type) {
-    case 'OPEN':    return { visible: true, loading: true, qualities: [], error: null, referer: null };
-    case 'LOADED':  return { ...state, loading: false, qualities: action.qualities, referer: action.referer };
-    case 'ERROR':   return { ...state, loading: false, error: action.error };
-    case 'CLOSE':   return { ...state, visible: false };
-    default:        return state;
+    case 'OPEN': return { visible: true, loading: true, qualities: [], error: null, referer: null };
+    case 'LOADED': return { ...state, loading: false, qualities: action.qualities, referer: action.referer };
+    case 'ERROR': return { ...state, loading: false, error: action.error };
+    case 'CLOSE': return { ...state, visible: false };
+    default: return state;
   }
 }
 
@@ -135,14 +135,14 @@ export default function PlayerScreen({ route, navigation }) {
   const [qualityState, dispatchQuality] = useReducer(qualityReducer, INITIAL_QUALITY_STATE);
 
   // ── Refs (no re-render needed) ────────────────────────────────────────────
-  const downloadRef        = useRef(null);
-  const resumeSnapshotRef  = useRef(null);
-  const lastTs             = useRef(0);
-  const lastBytes          = useRef(0);
-  const offlineTimerRef    = useRef(null);
-  const offlineAbortRef    = useRef(null); // AbortController for google HEAD check
+  const downloadRef = useRef(null);
+  const resumeSnapshotRef = useRef(null);
+  const lastTs = useRef(0);
+  const lastBytes = useRef(0);
+  const offlineTimerRef = useRef(null);
+  const offlineAbortRef = useRef(null); // AbortController for google HEAD check
   // Ref to current downloading flag — avoids stale closure in backAction
-  const downloadingRef     = useRef(false);
+  const downloadingRef = useRef(false);
 
   // Keep downloadingRef in sync with dlState
   downloadingRef.current = dlState.downloading;
@@ -184,7 +184,7 @@ export default function PlayerScreen({ route, navigation }) {
       sub.remove();
       clearOfflineTimer();
       if (downloadRef.current) {
-        downloadRef.current.cancelAsync().catch(() => {});
+        downloadRef.current.cancelAsync().catch(() => { });
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -240,35 +240,35 @@ export default function PlayerScreen({ route, navigation }) {
 
   // ── Progress Callback Factory ─────────────────────────────────────────────
   const makeCallback = useCallback((estBytes) => (progressData) => {
-    const written   = progressData.totalBytesWritten || 0;
-    const expected  = progressData.totalBytesExpectedToWrite > 0
+    const written = progressData.totalBytesWritten || 0;
+    const expected = progressData.totalBytesExpectedToWrite > 0
       ? progressData.totalBytesExpectedToWrite
       : estBytes;
     const prog = expected > 0 ? Math.min(written / expected, 1) : 0;
 
     const now = Date.now();
-    const dt  = (now - lastTs.current) / 1000;
+    const dt = (now - lastTs.current) / 1000;
 
     if (dt >= 0.8) {
-      const db  = written - lastBytes.current;
+      const db = written - lastBytes.current;
       const spd = db / dt / (1024 * 1024);
-      lastTs.current    = now;
+      lastTs.current = now;
       lastBytes.current = written;
       dispatchDl({
-        type:        'PROGRESS',
-        progress:    prog,
+        type: 'PROGRESS',
+        progress: prog,
         downloadedMB: +(written / (1024 * 1024)).toFixed(1),
-        totalMB:     +(expected / (1024 * 1024)).toFixed(1),
-        speedMB:     spd.toFixed(1),
-        eta:         spd > 0 ? formatEta((expected - written) / (spd * 1024 * 1024)) : '--',
+        totalMB: +(expected / (1024 * 1024)).toFixed(1),
+        speedMB: spd.toFixed(1),
+        eta: spd > 0 ? formatEta((expected - written) / (spd * 1024 * 1024)) : '--',
       });
     } else {
       // Still update progress bar even if not updating speed stats
       dispatchDl({
-        type:        'PROGRESS',
-        progress:    prog,
+        type: 'PROGRESS',
+        progress: prog,
         downloadedMB: +(written / (1024 * 1024)).toFixed(1),
-        totalMB:     +(expected / (1024 * 1024)).toFixed(1),
+        totalMB: +(expected / (1024 * 1024)).toFixed(1),
       });
     }
   }, []);
@@ -286,10 +286,10 @@ export default function PlayerScreen({ route, navigation }) {
     dispatchDl({ type: 'START', quality });
 
     const estBytes = parseSizeToBytes(quality.size);
-    const ext      = quality.url.split('?')[0].split('.').pop()?.split('/').pop() || 'mp4';
-    const fileUri  = `${FileSystem.documentDirectory}${sanitizeFilename(videoTitle)}_${quality.quality}.${ext}`;
+    const ext = quality.url.split('?')[0].split('.').pop()?.split('/').pop() || 'mp4';
+    const fileUri = `${FileSystem.documentDirectory}${sanitizeFilename(videoTitle)}_${quality.quality}.${ext}`;
 
-    lastTs.current    = Date.now();
+    lastTs.current = Date.now();
     lastBytes.current = 0;
 
     const referer = qualityState.referer || 'https://netmirror.global/';
@@ -403,9 +403,9 @@ export default function PlayerScreen({ route, navigation }) {
   const cancelDownload = useCallback(async () => {
     clearOfflineTimer();
     if (downloadRef.current) {
-      try { await downloadRef.current.cancelAsync(); } catch (_) {}
+      try { await downloadRef.current.cancelAsync(); } catch (_) { }
     }
-    downloadRef.current      = null;
+    downloadRef.current = null;
     resumeSnapshotRef.current = null;
     // Single dispatch — one re-render instead of 7
     dispatchDl({ type: 'CANCEL' });
