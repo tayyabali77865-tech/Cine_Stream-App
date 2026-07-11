@@ -249,12 +249,22 @@ app.get('/api/trending', async (req, res) => {
       queryParams = 'sort_by=date&dubbing=Tamil';
     }
 
+function isDeleted(id) {
+  const idStr = String(id);
+  return adminDb.deletedIds.some(item => {
+    if (typeof item === 'object' && item !== null) {
+      return item.id === idStr;
+    }
+    return String(item) === idStr;
+  });
+}
+
     if (category === 'Anime') {
       const endpoint = `/movies/filter?sort_by=date&country=Japan&items_per_page=30&page=${page}`;
       const { value: data, status } = await catalogCache.get(endpoint);
       const results = data.results || [];
       const mediaList = results
-        .filter(item => !adminDb.deletedIds.includes(String(item.id)))
+        .filter(item => !isDeleted(item.id))
         .map(item => ({
           id: item.id,
           title: item.title ? item.title.trim() : 'Unknown Title',
@@ -282,7 +292,7 @@ app.get('/api/trending', async (req, res) => {
     const results = data.results || [];
 
     const mediaList = results
-      .filter(item => !adminDb.deletedIds.includes(String(item.id)))
+      .filter(item => !isDeleted(item.id))
       .map(item => ({
         id: item.id,
         title: item.title ? item.title.trim() : 'Unknown Title',
@@ -318,7 +328,7 @@ app.get('/api/search', async (req, res) => {
     const results = data.results || [];
 
     const mediaList = results
-      .filter(item => !adminDb.deletedIds.includes(String(item.id)))
+      .filter(item => !isDeleted(item.id))
       .map(item => ({
         id: item.id,
         title: item.title ? item.title.trim() : 'Unknown Title',
@@ -573,6 +583,13 @@ app.get('/api/download-qualities/:id', async (req, res) => {
   const lang = req.query.lang || 'Hindi';
 
   try {
+    // A. Intercept if user has custom overridden download URLs
+    const customLinks = adminDb.customOverrides[String(id)];
+    if (customLinks && customLinks.length > 0) {
+      console.log(`🎯 Serving custom download qualities override for ID: ${id}`);
+      return res.json({ qualities: customLinks, referer: '' });
+    }
+
     console.log(`🔍 Fetching download qualities for ID: ${id} (S${se}E${ep} lang=${lang})`);
 
     const endpoint = `/movie/${id}`;
@@ -859,14 +876,43 @@ app.get(['/', '/admin'], (req, res) => {
 // CRUD Endpoint: DELETE Media Item (Removal)
 app.delete('/api/media/:id', (req, res) => {
   const { id } = req.params;
+  const title = req.query.title || 'Unknown Title';
   if (!id) return res.status(400).json({ error: 'Missing ID parameter' });
 
   const idStr = String(id);
-  if (!adminDb.deletedIds.includes(idStr)) {
-    adminDb.deletedIds.push(idStr);
+  
+  // Track details of deleted items in database so we can list & restore them
+  const isAlreadyDeleted = adminDb.deletedIds.some(item => typeof item === 'object' ? item.id === idStr : item === idStr);
+  if (!isAlreadyDeleted) {
+    adminDb.deletedIds.push({ id: idStr, title, deletedAt: new Date().toISOString() });
     saveDb();
   }
   res.json({ success: true, message: `Media ${id} successfully removed from frontend list.` });
+});
+
+// CRUD Endpoint: GET List of Deleted Items
+app.get('/api/deleted-list', (req, res) => {
+  // Normalize old deleted ID strings to objects
+  const list = adminDb.deletedIds.map(item => {
+    if (typeof item === 'object') return item;
+    return { id: String(item), title: 'Deleted Media Item (ID: ' + item + ')', deletedAt: 'N/A' };
+  });
+  res.json(list);
+});
+
+// CRUD Endpoint: POST Restore Media Item (Removal Undo)
+app.post('/api/media-restore/:id', (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ error: 'Missing ID parameter' });
+
+  const idStr = String(id);
+  adminDb.deletedIds = adminDb.deletedIds.filter(item => {
+    if (typeof item === 'object') return item.id !== idStr;
+    return String(item) !== idStr;
+  });
+  saveDb();
+
+  res.json({ success: true, message: `Media ${id} successfully restored.` });
 });
 
 // CRUD Endpoint: GET Custom URL Overrides for target media

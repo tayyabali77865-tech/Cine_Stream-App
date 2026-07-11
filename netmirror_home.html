@@ -159,7 +159,7 @@
 
     @media (min-width: 850px) {
       .container {
-        grid-template-columns: 1.5fr 1fr;
+        grid-template-columns: 1.2fr 1fr;
       }
     }
 
@@ -169,6 +169,7 @@
       border-radius: 16px;
       padding: 24px;
       box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      margin-bottom: 30px;
     }
 
     h2 {
@@ -231,7 +232,7 @@
       display: flex;
       flex-direction: column;
       gap: 14px;
-      max-height: 550px;
+      max-height: 400px;
       overflow-y: auto;
       padding-right: 6px;
     }
@@ -305,6 +306,16 @@
     }
     .btn-danger:hover {
       background-color: var(--danger);
+      color: #FFF;
+    }
+
+    .btn-success {
+      background-color: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      color: var(--success);
+    }
+    .btn-success:hover {
+      background-color: var(--success);
       color: #FFF;
     }
 
@@ -429,6 +440,10 @@
       color: var(--primary);
       font-weight: 600;
     }
+
+    .deleted-list-panel {
+      grid-column: 1 / -1;
+    }
   </style>
 </head>
 <body>
@@ -496,6 +511,17 @@
           </div>
         </div>
       </div>
+
+      <!-- Restore Deleted Items Section -->
+      <div class="panel deleted-list-panel">
+        <h2>🔄 Restore Deleted Media</h2>
+        <div class="media-list" id="deletedList">
+          <div class="empty-state">
+            <div class="empty-icon">🗑️</div>
+            <div>No deleted content found in database.</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -520,6 +546,7 @@
     function showPanel() {
       document.getElementById('loginScreen').style.display = 'none';
       document.getElementById('mainContent').style.display = 'flex';
+      loadDeletedList(); // Populate deleted list once admin accesses
     }
 
     function logout() {
@@ -638,7 +665,7 @@
       if (!confirm(`Are you sure you want to remove "${item.title}" from the list?`)) return;
 
       try {
-        const endpoint = `/media/${id}`;
+        const endpoint = `/media/${id}?title=${encodeURIComponent(item.title)}`;
         const headers = await makeHeaders(endpoint);
         const res = await fetch(`/api${endpoint}`, {
           method: 'DELETE',
@@ -655,8 +682,77 @@
         if (activeMediaItem && activeMediaItem.id === id) {
           resetEditor();
         }
+        loadDeletedList(); // reload restore database panel view
       } catch (err) {
         showToast('Delete failed: Server returned error', true);
+      }
+    }
+
+    // ─── Restore Media ────────────────────────────────────────
+    async function loadDeletedList() {
+      const container = document.getElementById('deletedList');
+      try {
+        const endpoint = '/deleted-list';
+        const headers = await makeHeaders(endpoint);
+        const res = await fetch(`/api${endpoint}`, { headers });
+        if (!res.ok) throw new Error('Load failed');
+
+        const list = await res.json();
+        if (list.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-icon">🗑️</div>
+              <div>No deleted content found in database.</div>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = '';
+        list.forEach(item => {
+          const itemEl = document.createElement('div');
+          itemEl.className = 'media-item';
+          itemEl.id = `deleted-row-${item.id}`;
+
+          itemEl.innerHTML = `
+            <div class="media-info">
+              <div class="media-title">${escapeHtml(item.title)}</div>
+              <div class="media-meta"><span>ID: ${item.id}</span> • <span>Removed: ${new Date(item.deletedAt).toLocaleString()}</span></div>
+            </div>
+            <div class="action-row">
+              <button class="btn-icon btn-success" onclick="restoreMediaItem('${item.id}', '${escapeHtml(item.title)}')">Restore</button>
+            </div>
+          `;
+          container.appendChild(itemEl);
+        });
+      } catch (err) {
+        console.error('Failed to load deleted list:', err.message);
+      }
+    }
+
+    async function restoreMediaItem(id, title) {
+      if (!confirm(`Are you sure you want to restore "${title}" back to the active list?`)) return;
+
+      try {
+        const endpoint = `/media-restore/${id}`;
+        const headers = await makeHeaders(endpoint);
+        const res = await fetch(`/api${endpoint}`, {
+          method: 'POST',
+          headers
+        });
+
+        if (!res.ok) throw new Error('Restore failed');
+        showToast('Content successfully restored');
+
+        const row = document.getElementById(`deleted-row-${id}`);
+        if (row) row.remove();
+
+        loadDeletedList();
+        // If search results are showing, refresh them
+        const query = document.getElementById('searchQuery').value.trim();
+        if (query) searchMedia();
+      } catch (err) {
+        showToast('Restore Action Failed', true);
       }
     }
 
