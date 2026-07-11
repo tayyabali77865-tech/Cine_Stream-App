@@ -1,11 +1,10 @@
-import React, { useEffect, useState, useRef, useCallback, useReducer } from 'react';
+import React, { useEffect, useRef, useCallback, useReducer } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   ActivityIndicator,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   StatusBar,
   BackHandler,
   Modal,
@@ -17,6 +16,7 @@ import { Video, ResizeMode } from 'expo-av';
 import { apiService } from '../services/apiService';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
+import * as ScreenOrientation from 'expo-screen-orientation';
 
 // ─── Screen Dimensions ────────────────────────────────────────────────────────
 
@@ -148,24 +148,6 @@ export default function PlayerScreen({ route, navigation }) {
   // Keep downloadingRef in sync with dlState
   downloadingRef.current = dlState.downloading;
 
-  // ── Controls visibility (tap to toggle, no auto-hide) ──────────────────────
-  const [showControls, setShowControls] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(true);
-  const videoRef = useRef(null);
-
-  const toggleControls = useCallback(() => {
-    setShowControls(prev => !prev);
-  }, []);
-
-  const togglePlay = useCallback(async () => {
-    if (!videoRef.current) return;
-    if (isPlaying) {
-      await videoRef.current.pauseAsync();
-    } else {
-      await videoRef.current.playAsync();
-    }
-  }, [isPlaying]);
-
   // ── Derived ───────────────────────────────────────────────────────────────
   const videoTitle = title
     ? (season
@@ -176,6 +158,11 @@ export default function PlayerScreen({ route, navigation }) {
   // ── Mount / Unmount ───────────────────────────────────────────────────────
   useEffect(() => {
     loadStream();
+
+    // Unlock auto rotation only for this screen
+    ScreenOrientation.unlockAsync().catch((err) => {
+      console.warn('Could not unlock screen orientation:', err);
+    });
 
     // backAction reads downloadingRef (not stale closure over dlState.downloading)
     const backAction = () => {
@@ -205,6 +192,10 @@ export default function PlayerScreen({ route, navigation }) {
       if (downloadRef.current) {
         downloadRef.current.cancelAsync().catch(() => { });
       }
+      // Re-lock orientation to portrait when leaving the screen
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch((err) => {
+        console.warn('Could not lock screen orientation:', err);
+      });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -462,38 +453,23 @@ export default function PlayerScreen({ route, navigation }) {
       <StatusBar hidden />
 
       {/* ── Video Player ── */}
-      <TouchableWithoutFeedback onPress={toggleControls}>
-        <View style={styles.videoContainer}>
-          <Video
-            ref={videoRef}
-            source={{
-              uri: sources.videoUrl,
-              headers: {
-                Referer: sources.referer,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              }
-            }}
-            style={styles.video}
-            useNativeControls={false}
-            resizeMode={ResizeMode.CONTAIN}
-            shouldPlay={isPlaying}
-            onPlaybackStatusUpdate={(s) => {
-              if (s.isLoaded) setIsPlaying(s.isPlaying);
-            }}
-            onError={(err) => {
-              console.error('[Player] video error:', err);
-              dispatchStream({ type: 'ERROR', error: 'Playback failed. The session may have expired.' });
-            }}
-          />
-
-          {/* Play/Pause overlay — visible only when showControls is true */}
-          {showControls && (
-            <TouchableOpacity style={styles.playPauseOverlay} onPress={togglePlay} activeOpacity={0.8}>
-              <Text style={styles.playPauseIcon}>{isPlaying ? '⏸' : '▶'}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </TouchableWithoutFeedback>
+      <Video
+        source={{
+          uri: sources.videoUrl,
+          headers: {
+            Referer: sources.referer,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          }
+        }}
+        style={styles.video}
+        useNativeControls
+        resizeMode={ResizeMode.CONTAIN}
+        shouldPlay
+        onError={(err) => {
+          console.error('[Player] video error:', err);
+          dispatchStream({ type: 'ERROR', error: 'Playback failed. The session may have expired.' });
+        }}
+      />
 
       {/* ── Info + Download Panel ── */}
       <ScrollView style={styles.panel} contentContainerStyle={styles.panelContent}>
@@ -638,23 +614,7 @@ export default function PlayerScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#050507' },
-  videoContainer: { width: '100%', height: VIDEO_HEIGHT, position: 'relative', backgroundColor: '#000' },
-  video: { width: '100%', height: '100%' },
-  playPauseOverlay: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: [{ translateX: -28 }, { translateY: -28 }],
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.25)',
-  },
-  playPauseIcon: { color: '#FFF', fontSize: 22, marginLeft: 2 },
+  video: { width: '100%', height: VIDEO_HEIGHT },
   center: {
     flex: 1,
     backgroundColor: '#050507',
