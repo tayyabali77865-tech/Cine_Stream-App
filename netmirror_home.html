@@ -37,6 +37,81 @@
       overflow-x: hidden;
     }
 
+    /* Login Screen Container */
+    #loginScreen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--bg-color);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+
+    .login-card {
+      background: var(--panel-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 12px 48px rgba(0,0,0,0.6);
+      text-align: center;
+    }
+
+    .login-logo {
+      font-size: 28px;
+      font-weight: 800;
+      margin-bottom: 24px;
+    }
+
+    .login-logo .cine { color: var(--primary); }
+    .login-logo .stream { color: var(--text); }
+
+    .input-group {
+      margin-bottom: 16px;
+      text-align: left;
+    }
+
+    .input-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .login-card input {
+      width: 100%;
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 15px;
+      outline: none;
+    }
+
+    .login-card input:focus {
+      border-color: var(--primary);
+    }
+
+    .login-error {
+      color: var(--danger);
+      font-size: 13px;
+      margin-top: 10px;
+      display: none;
+    }
+
+    /* Admin Panel Main Content */
+    #mainContent {
+      display: none;
+      flex-direction: column;
+      flex: 1;
+    }
+
     header {
       background-color: var(--panel-bg);
       border-bottom: 1px solid var(--border);
@@ -357,44 +432,68 @@
   </style>
 </head>
 <body>
-  <header>
-    <div class="logo">
-      <span class="logo-cine">Cine</span><span class="logo-stream">Stream</span>
-      <span class="logo-admin">Control Panel</span>
+
+  <!-- ─── LOGIN SCREEN ─── -->
+  <div id="loginScreen">
+    <div class="login-card">
+      <div class="login-logo">
+        <span class="cine">Cine</span><span class="stream">Stream</span> Admin
+      </div>
+      <div class="input-group">
+        <div class="input-label">📧 Email Address</div>
+        <input type="email" id="loginEmail" placeholder="tayyabcinestream.watch">
+      </div>
+      <div class="input-group" style="margin-bottom: 24px;">
+        <div class="input-label">🔑 Password</div>
+        <input type="password" id="loginPassword" placeholder="••••••••" onkeydown="if(event.key==='Enter') attemptLogin()">
+      </div>
+      <button onclick="attemptLogin()" style="width: 100%; padding: 14px;">Sign In</button>
+      <div id="loginError" class="login-error">Invalid email or password</div>
     </div>
-  </header>
+  </div>
 
-  <div class="container">
-    <!-- Search & Removal Panel -->
-    <div class="panel">
-      <h2>🔍 Search & Remove Media</h2>
-
-      <!-- Admin Secret Key Configuration -->
-      <div class="admin-key-bar">
-        <span class="admin-key-lbl">🔑 Admin Auth Key:</span>
-        <input type="password" id="authKey" placeholder="Enter API_KEY" value="cinestream_secret_secure_key_2026">
+  <!-- ─── MAIN ADMIN INTERFACE ─── -->
+  <div id="mainContent">
+    <header>
+      <div class="logo">
+        <span class="logo-cine">Cine</span><span class="logo-stream">Stream</span>
+        <span class="logo-admin">Control Panel</span>
       </div>
+      <button onclick="logout()" class="btn-secondary" style="padding: 8px 16px; font-size: 13px;">Logout</button>
+    </header>
 
-      <div class="search-box">
-        <input type="text" id="searchQuery" placeholder="Type Movie, Series or Anime title..." onkeydown="if(event.key==='Enter') searchMedia()">
-        <button onclick="searchMedia()">Search</button>
-      </div>
+    <div class="container">
+      <!-- Search & Removal Panel -->
+      <div class="panel">
+        <h2>🔍 Search & Remove Media</h2>
 
-      <div class="media-list" id="mediaList">
-        <div class="empty-state">
-          <div class="empty-icon">🎬</div>
-          <div>Search for any item to manage or customize.</div>
+        <!-- Admin Secret Key Configuration -->
+        <div class="admin-key-bar">
+          <span class="admin-key-lbl">🔑 API Auth Token:</span>
+          <input type="password" id="authKey" placeholder="Enter API_KEY" value="cinestream_secret_secure_key_2026">
+        </div>
+
+        <div class="search-box">
+          <input type="text" id="searchQuery" placeholder="Type Movie, Series or Anime title..." onkeydown="if(event.key==='Enter') searchMedia()">
+          <button onclick="searchMedia()">Search</button>
+        </div>
+
+        <div class="media-list" id="mediaList">
+          <div class="empty-state">
+            <div class="empty-icon">🎬</div>
+            <div>Search for any item to manage or customize.</div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Custom URL Configurator -->
-    <div class="panel">
-      <h2>🔗 Custom Play Link Customizer</h2>
-      <div class="editor-section" id="editorSection">
-        <div class="empty-state">
-          <div class="empty-icon">👉</div>
-          <div>Select a media card from search list to customize its streaming URL.</div>
+      <!-- Custom URL Configurator -->
+      <div class="panel">
+        <h2>🔗 Custom Play Link Customizer</h2>
+        <div class="editor-section" id="editorSection">
+          <div class="empty-state">
+            <div class="empty-icon">👉</div>
+            <div>Select a media card from search list to customize its streaming URL.</div>
+          </div>
         </div>
       </div>
     </div>
@@ -403,7 +502,41 @@
   <div id="toast" class="toast">Action completed successfully</div>
 
   <script>
+    // ─── LOGIN SESSION CONTROLS ───
+    function attemptLogin() {
+      const email = document.getElementById('loginEmail').value.trim();
+      const pass = document.getElementById('loginPassword').value;
+      const err = document.getElementById('loginError');
+
+      if (email === 'tayyabcinestream.watch' && pass === 'bilawalbhai') {
+        localStorage.setItem('adminSession', 'true');
+        err.style.display = 'none';
+        showPanel();
+      } else {
+        err.style.display = 'block';
+      }
+    }
+
+    function showPanel() {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('mainContent').style.display = 'flex';
+    }
+
+    function logout() {
+      localStorage.removeItem('adminSession');
+      document.getElementById('loginScreen').style.display = 'flex';
+      document.getElementById('mainContent').style.display = 'none';
+      document.getElementById('loginPassword').value = '';
+    }
+
+    // Auto load session
+    if (localStorage.getItem('adminSession') === 'true') {
+      showPanel();
+    }
+
+    // ─── ADMIN ACTIONS ───
     let activeMediaItem = null;
+    let cachedSearchResults = [];
 
     // Helper: Signature Generation (mimics frontend security protocol)
     async function makeHeaders(endpoint) {
@@ -454,16 +587,16 @@
         const res = await fetch(`/api${endpoint}`, { headers });
         if (!res.ok) throw new Error('Failed to fetch search results.');
 
-        const results = await res.json();
-        if (results.length === 0) {
+        cachedSearchResults = await res.json();
+        if (cachedSearchResults.length === 0) {
           mediaListContainer.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div>No matches found.</div></div>';
           return;
         }
 
-        renderMediaItems(results);
+        renderMediaItems(cachedSearchResults);
       } catch (err) {
-        showToast('Search Failed: Verify Auth Key', true);
-        mediaListContainer.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><div>Search failed. Check your console.</div></div>';
+        showToast('Search Failed: Verify Auth Token', true);
+        mediaListContainer.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><div>Search failed.</div></div>';
       }
     }
 
@@ -471,7 +604,7 @@
       const mediaListContainer = document.getElementById('mediaList');
       mediaListContainer.innerHTML = '';
 
-      items.forEach(item => {
+      items.forEach((item, index) => {
         const itemEl = document.createElement('div');
         itemEl.className = 'media-item';
         itemEl.id = `media-row-${item.id}`;
@@ -489,8 +622,8 @@
             <div class="media-meta">${detailsMeta}</div>
           </div>
           <div class="action-row">
-            <button class="btn-icon" onclick="selectMediaItem(${JSON.stringify(item).replace(/"/g, '&quot;')})">Edit</button>
-            <button class="btn-icon btn-danger" onclick="removeMediaItem('${item.id}', '${escapeHtml(item.title)}')">Delete</button>
+            <button class="btn-icon" onclick="selectMediaItem(${index})">Edit</button>
+            <button class="btn-icon btn-danger" onclick="removeMediaItem('${item.id}', ${index})">Delete</button>
           </div>
         `;
         mediaListContainer.appendChild(itemEl);
@@ -498,8 +631,11 @@
     }
 
     // ─── Delete Media ─────────────────────────────────────────
-    async function removeMediaItem(id, title) {
-      if (!confirm(`Are you sure you want to remove "${title}" from the list?`)) return;
+    async function removeMediaItem(id, index) {
+      const item = cachedSearchResults[index];
+      if (!item) return;
+      
+      if (!confirm(`Are you sure you want to remove "${item.title}" from the list?`)) return;
 
       try {
         const endpoint = `/media/${id}`;
@@ -525,7 +661,10 @@
     }
 
     // ─── Select Media for Custom Link Editor ───────────────────
-    async function selectMediaItem(item) {
+    async function selectMediaItem(index) {
+      const item = cachedSearchResults[index];
+      if (!item) return;
+      
       activeMediaItem = item;
       const editorSection = document.getElementById('editorSection');
       editorSection.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><div>Loading config...</div></div>';
@@ -566,7 +705,6 @@
       `;
 
       if (customLinks.length === 0) {
-        // Default quality row placeholder
         addLinkRow('720P', '', 'Auto');
       } else {
         customLinks.forEach(link => {
@@ -635,7 +773,7 @@
         if (!res.ok) throw new Error('Save failed.');
         showToast('Custom links saved successfully!');
         resetEditor();
-        searchMedia(); // Refresh list to reflect badge changes
+        searchMedia();
       } catch (err) {
         showToast('Failed to save link configuration', true);
       }
@@ -653,6 +791,7 @@
     }
 
     function escapeHtml(text) {
+      if (!text) return '';
       return text
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
