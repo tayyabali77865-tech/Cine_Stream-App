@@ -1,101 +1,665 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CineStream Admin Control Center</title>
+  <!-- Outfit Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #0A0A0C;
+      --panel-bg: #121217;
+      --card-bg: #1B1B22;
+      --primary: #E50914;
+      --primary-hover: #F61C27;
+      --accent: #A855F7;
+      --text: #F3F4F6;
+      --text-muted: #9CA3AF;
+      --border: rgba(255, 255, 255, 0.08);
+      --success: #10B981;
+      --danger: #EF4444;
+    }
 
-  <link rel="icon" type="image/png" href="/icon.png" />
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Outfit', sans-serif;
+    }
 
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    body {
+      background-color: var(--bg-color);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
 
-   <!-- Canonical -->
-  <link rel="canonical" href="https://netmirror.global/" data-react-helmet="true">
+    header {
+      background-color: var(--panel-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 18px 5%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+    }
 
-  <!-- Title -->
-  <title>NetMirror – Watch Movies & TV Series Online</title>
-  <!-- Description -->
-  <meta name="description" data-react-helmet="true"
-    content="NetMirror lets you explore movies and TV series from multiple countries and OTT platforms. Watch and browse content on Android, iOS, and for pc.">
+    .logo {
+      display: flex;
+      align-items: center;
+      font-weight: 800;
+      font-size: 24px;
+      letter-spacing: 0.5px;
+    }
 
-  <!-- Open Graph -->
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="https://netmirror.global/" data-react-helmet="true">
-  <meta property="og:title" content="NetMirror – Watch Movies & TV Series Online" data-react-helmet="true">
-  <meta property="og:description" 
-  content="Discover movies and TV series from multiple countries and OTT platforms with NetMirror. Accessible on mobile and for pc." data-react-helmet="true">
-  <meta property="og:image" content="https://netmirror.global/netmirror_web.png">
-  <meta property="og:image:type" content="image/jpeg">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
+    .logo-cine { color: var(--primary); }
+    .logo-stream { color: var(--text); }
+    .logo-admin {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      background: var(--accent);
+      color: #FFF;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-left: 10px;
+      letter-spacing: 1px;
+    }
 
-  <!-- Twitter -->
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="NetMirror – Watch Movies & TV Series Online" data-react-helmet="true">
-  <meta name="twitter:description"
-    content="Browse movies and TV series from multiple OTT platforms using NetMirror on Android, iOS, and for pc." data-react-helmet="true">
-  <meta name="twitter:image" content="https://netmirror.global/netmirror_web.png">
-  
-  
+    .container {
+      flex: 1;
+      max-width: 1200px;
+      width: 90%;
+      margin: 30px auto;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 30px;
+    }
 
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-  <link rel="manifest" href="https://netmirror.global/manifest.json">
-  <script>
-  window.SERVER_TIME = 1783397239;
-</script>
-  <script type="module" crossorigin
-    src="/assets/index-794a1aad.js"></script>
-  <link rel="stylesheet" href="/assets/index-1ae177af.css">
-  // <script>
-// setTimeout(() => {
-//     let script = document.createElement("script");
-//       script.src = "https://llvpn.com/tag.min.js"; // your external file path
-//       script.setAttribute("data-zone", "11121446");   
-//       document.body.appendChild(script);
-//     }, 5000); 
-// </script>
- <script>
-(function(s){
-    s.dataset.zone = '11121446';
+    @media (min-width: 850px) {
+      .container {
+        grid-template-columns: 1.5fr 1fr;
+      }
+    }
 
-    s.onload = function () {
-        window.llvpnLoaded = true;
-    };
+    .panel {
+      background-color: var(--panel-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
 
-    s.onerror = function () {
-        window.llvpnLoaded = false;
-    };
+    h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
 
-    s.src = 'https://llvpn.com/tag.min.js';
-})(
-    [document.documentElement, document.body]
-        .filter(Boolean)
-        .pop()
-        .appendChild(document.createElement('script'))
-);
-</script>
+    .search-box {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
 
+    input, select {
+      flex: 1;
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(229, 9, 20, 0.2);
+    }
+
+    button {
+      background-color: var(--primary);
+      color: #FFF;
+      border: none;
+      padding: 12px 24px;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.1s;
+    }
+
+    button:hover { background-color: var(--primary-hover); }
+    button:active { transform: scale(0.98); }
+
+    .btn-secondary {
+      background-color: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn-secondary:hover {
+      background-color: rgba(255,255,255,0.05);
+    }
+
+    .media-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-height: 550px;
+      overflow-y: auto;
+      padding-right: 6px;
+    }
+
+    /* Scrollbar Style */
+    .media-list::-webkit-scrollbar { width: 6px; }
+    .media-list::-webkit-scrollbar-track { background: transparent; }
+    .media-list::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.1);
+      border-radius: 3px;
+    }
+
+    .media-item {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: transform 0.2s;
+    }
+
+    .media-item:hover {
+      transform: translateY(-2px);
+    }
+
+    .media-info {
+      flex: 1;
+      margin-right: 16px;
+    }
+
+    .media-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .media-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 12px;
+    }
+
+    .tag-badge {
+      background: rgba(255,255,255,0.06);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    .tag-badge.custom {
+      background: rgba(168, 85, 247, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+
+    .action-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-icon {
+      padding: 8px 12px;
+      font-size: 13px;
+      border-radius: 6px;
+    }
+    .btn-danger {
+      background-color: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      color: var(--danger);
+    }
+    .btn-danger:hover {
+      background-color: var(--danger);
+      color: #FFF;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background-color: var(--success);
+      color: #FFF;
+      padding: 14px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+      z-index: 1000;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.3s, transform 0.3s;
+      pointer-events: none;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .toast.error {
+      background-color: var(--danger);
+    }
+
+    /* Editor Section */
+    .editor-section {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .editor-card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .editor-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .editor-title-active {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .custom-links-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .link-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: rgba(0,0,0,0.2);
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      position: relative;
+    }
+
+    .link-row-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .btn-remove-link {
+      background: transparent;
+      color: var(--danger);
+      font-size: 12px;
+      padding: 4px 8px;
+    }
+    .btn-remove-link:hover {
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    .empty-state {
+      padding: 40px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .empty-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+    }
+
+    .admin-key-bar {
+      margin-bottom: 20px;
+      background: rgba(229, 9, 20, 0.05);
+      border: 1px solid rgba(229, 9, 20, 0.15);
+      border-radius: 10px;
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .admin-key-bar input {
+      max-width: 280px;
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+    .admin-key-lbl {
+      font-size: 13px;
+      color: var(--primary);
+      font-weight: 600;
+    }
+  </style>
 </head>
-
 <body>
-  <div id="root"></div>
+  <header>
+    <div class="logo">
+      <span class="logo-cine">Cine</span><span class="logo-stream">Stream</span>
+      <span class="logo-admin">Control Panel</span>
+    </div>
+  </header>
 
-  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-DSYQK9M61P"></script>
+  <div class="container">
+    <!-- Search & Removal Panel -->
+    <div class="panel">
+      <h2>🔍 Search & Remove Media</h2>
+
+      <!-- Admin Secret Key Configuration -->
+      <div class="admin-key-bar">
+        <span class="admin-key-lbl">🔑 Admin Auth Key:</span>
+        <input type="password" id="authKey" placeholder="Enter API_KEY" value="cinestream_secret_secure_key_2026">
+      </div>
+
+      <div class="search-box">
+        <input type="text" id="searchQuery" placeholder="Type Movie, Series or Anime title..." onkeydown="if(event.key==='Enter') searchMedia()">
+        <button onclick="searchMedia()">Search</button>
+      </div>
+
+      <div class="media-list" id="mediaList">
+        <div class="empty-state">
+          <div class="empty-icon">🎬</div>
+          <div>Search for any item to manage or customize.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom URL Configurator -->
+    <div class="panel">
+      <h2>🔗 Custom Play Link Customizer</h2>
+      <div class="editor-section" id="editorSection">
+        <div class="empty-state">
+          <div class="empty-icon">👉</div>
+          <div>Select a media card from search list to customize its streaming URL.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast">Action completed successfully</div>
+
   <script>
-    window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
+    let activeMediaItem = null;
 
-  gtag('config', 'G-DSYQK9M61P');
+    // Helper: Signature Generation (mimics frontend security protocol)
+    async function makeHeaders(endpoint) {
+      const apiKeyInput = document.getElementById('authKey').value || 'cinestream_secret_secure_key_2026';
+      const timestamp = String(Date.now());
+      const dataToSign = `/api${endpoint}${timestamp}`;
+
+      // Crypto signature equivalent in client browser JS
+      const encoder = new TextEncoder();
+      const keyData = encoder.encode(apiKeyInput);
+      const msgData = encoder.encode(dataToSign);
+
+      const cryptoKey = await window.crypto.subtle.importKey(
+        'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+      );
+      const signatureBuffer = await window.crypto.subtle.sign('HMAC', cryptoKey, msgData);
+      const hashArray = Array.from(new Uint8Array(signatureBuffer));
+      const signature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      return {
+        'Content-Type': 'application/json',
+        'X-Signature': signature,
+        'X-Timestamp': timestamp
+      };
+    }
+
+    function showToast(message, isError = false) {
+      const toast = document.getElementById('toast');
+      toast.innerText = message;
+      toast.className = 'toast show' + (isError ? ' error' : '');
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // ─── Search API ───────────────────────────────────────────
+    async function searchMedia() {
+      const query = document.getElementById('searchQuery').value.trim();
+      if (!query) {
+        showToast('Please type a query', true);
+        return;
+      }
+
+      const mediaListContainer = document.getElementById('mediaList');
+      mediaListContainer.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><div>Searching...</div></div>';
+
+      try {
+        const endpoint = `/search?q=${encodeURIComponent(query)}`;
+        const headers = await makeHeaders(endpoint);
+        const res = await fetch(`/api${endpoint}`, { headers });
+        if (!res.ok) throw new Error('Failed to fetch search results.');
+
+        const results = await res.json();
+        if (results.length === 0) {
+          mediaListContainer.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div>No matches found.</div></div>';
+          return;
+        }
+
+        renderMediaItems(results);
+      } catch (err) {
+        showToast('Search Failed: Verify Auth Key', true);
+        mediaListContainer.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><div>Search failed. Check your console.</div></div>';
+      }
+    }
+
+    function renderMediaItems(items) {
+      const mediaListContainer = document.getElementById('mediaList');
+      mediaListContainer.innerHTML = '';
+
+      items.forEach(item => {
+        const itemEl = document.createElement('div');
+        itemEl.className = 'media-item';
+        itemEl.id = `media-row-${item.id}`;
+
+        const detailsMeta = `
+          <span class="tag-badge">${item.type}</span>
+          <span>⭐ ${item.rating}</span>
+          <span>📅 ${item.releaseDate}</span>
+          ${item.isCustom ? '<span class="tag-badge custom">Custom Link</span>' : ''}
+        `;
+
+        itemEl.innerHTML = `
+          <div class="media-info">
+            <div class="media-title">${escapeHtml(item.title)}</div>
+            <div class="media-meta">${detailsMeta}</div>
+          </div>
+          <div class="action-row">
+            <button class="btn-icon" onclick="selectMediaItem(${JSON.stringify(item).replace(/"/g, '&quot;')})">Edit</button>
+            <button class="btn-icon btn-danger" onclick="removeMediaItem('${item.id}', '${escapeHtml(item.title)}')">Delete</button>
+          </div>
+        `;
+        mediaListContainer.appendChild(itemEl);
+      });
+    }
+
+    // ─── Delete Media ─────────────────────────────────────────
+    async function removeMediaItem(id, title) {
+      if (!confirm(`Are you sure you want to remove "${title}" from the list?`)) return;
+
+      try {
+        const endpoint = `/media/${id}`;
+        const headers = await makeHeaders(endpoint);
+        const res = await fetch(`/api${endpoint}`, {
+          method: 'DELETE',
+          headers
+        });
+
+        if (!res.ok) throw new Error('Deletion failed.');
+        showToast('Item deleted successfully');
+        
+        // Remove element from DOM list
+        const row = document.getElementById(`media-row-${id}`);
+        if (row) row.remove();
+        
+        if (activeMediaItem && activeMediaItem.id === id) {
+          resetEditor();
+        }
+      } catch (err) {
+        showToast('Delete failed: Server returned error', true);
+      }
+    }
+
+    // ─── Select Media for Custom Link Editor ───────────────────
+    async function selectMediaItem(item) {
+      activeMediaItem = item;
+      const editorSection = document.getElementById('editorSection');
+      editorSection.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><div>Loading config...</div></div>';
+
+      try {
+        const endpoint = `/media-custom/${item.id}`;
+        const headers = await makeHeaders(endpoint);
+        const res = await fetch(`/api${endpoint}`, { headers });
+        const config = res.ok ? await res.json() : { id: item.id, customLinks: [] };
+
+        renderEditor(config);
+      } catch (err) {
+        showToast('Failed to load item config', true);
+      }
+    }
+
+    function renderEditor(config) {
+      const editorSection = document.getElementById('editorSection');
+      
+      const customLinks = config.customLinks || [];
+
+      editorSection.innerHTML = `
+        <div class="editor-card">
+          <div class="editor-title-active">${escapeHtml(activeMediaItem.title)}</div>
+          
+          <div class="editor-label">🔗 Customize Streaming Quality Links</div>
+          <div class="custom-links-container" id="linksContainer">
+            <!-- Quality inputs will go here -->
+          </div>
+
+          <button onclick="addLinkRow()" class="btn-secondary" style="width: 100%; margin-bottom: 24px;">➕ Add Quality Stream URL</button>
+
+          <div style="display: flex; gap: 12px;">
+            <button onclick="saveCustomLinks()" style="flex: 1;">Save Custom Links</button>
+            <button onclick="resetEditor()" class="btn-secondary">Cancel</button>
+          </div>
+        </div>
+      `;
+
+      if (customLinks.length === 0) {
+        // Default quality row placeholder
+        addLinkRow('720P', '', 'Auto');
+      } else {
+        customLinks.forEach(link => {
+          addLinkRow(link.quality, link.url, link.size);
+        });
+      }
+    }
+
+    function addLinkRow(quality = '720P', url = '', size = 'Auto') {
+      const container = document.getElementById('linksContainer');
+      const rowId = 'link-row-' + Math.random().toString(36).substr(2, 9);
+      
+      const row = document.createElement('div');
+      row.className = 'link-row';
+      row.id = rowId;
+
+      row.innerHTML = `
+        <div class="link-row-header">
+          <span style="font-size: 13px; font-weight:600;">Quality Configuration</span>
+          <button class="btn-remove-link" onclick="document.getElementById('${rowId}').remove()">Remove</button>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <select class="quality-select" style="max-width: 110px;">
+            <option value="1080P" ${quality==='1080P'?'selected':''}>1080P</option>
+            <option value="720P" ${quality==='720P'?'selected':''}>720P</option>
+            <option value="480P" ${quality==='480P'?'selected':''}>480P</option>
+            <option value="360P" ${quality==='360P'?'selected':''}>360P</option>
+            <option value="HD" ${quality==='HD'?'selected':''}>HD</option>
+          </select>
+          <input type="text" class="size-input" placeholder="Size (e.g. 750 MB)" value="${size}" style="max-width: 140px;">
+        </div>
+        <input type="text" class="url-input" placeholder="CDN Direct Video URL (mp4, m3u8, etc.)" value="${url}">
+      `;
+
+      container.appendChild(row);
+    }
+
+    async function saveCustomLinks() {
+      if (!activeMediaItem) return;
+
+      const container = document.getElementById('linksContainer');
+      const rows = container.getElementsByClassName('link-row');
+      const customLinks = [];
+
+      for (let row of rows) {
+        const quality = row.querySelector('.quality-select').value;
+        const size = row.querySelector('.size-input').value.trim() || 'Auto';
+        const url = row.querySelector('.url-input').value.trim();
+
+        if (!url) {
+          showToast('Quality Link cannot be empty', true);
+          return;
+        }
+        customLinks.push({ quality, size, url });
+      }
+
+      try {
+        const endpoint = `/media-custom/${activeMediaItem.id}`;
+        const headers = await makeHeaders(endpoint);
+        const res = await fetch(`/api${endpoint}`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ customLinks })
+        });
+
+        if (!res.ok) throw new Error('Save failed.');
+        showToast('Custom links saved successfully!');
+        resetEditor();
+        searchMedia(); // Refresh list to reflect badge changes
+      } catch (err) {
+        showToast('Failed to save link configuration', true);
+      }
+    }
+
+    function resetEditor() {
+      activeMediaItem = null;
+      const editorSection = document.getElementById('editorSection');
+      editorSection.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">👉</div>
+          <div>Select a media card from search list to customize its streaming URL.</div>
+        </div>
+      `;
+    }
+
+    function escapeHtml(text) {
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
   </script>
-  
-  
-  
 </body>
-<style>
-   html.disable-popunder-overlay div[style*="z-index: 2147483647"] > div {
-  pointer-events: none !important;
-}
- </style>
 </html>
