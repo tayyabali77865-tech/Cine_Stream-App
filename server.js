@@ -152,8 +152,10 @@ app.use((req, res, next) => {
 
   // 2. Re-calculate signature
   const secretKey = process.env.API_KEY || 'cinestream_secret_secure_key_2026';
-  const dataToSign = req.originalUrl + timestamp;
+  const decodedUrl = decodeURIComponent(req.originalUrl.replace(/\+/g, ' '));
+  const dataToSign = decodedUrl + timestamp;
   const expectedSignature = crypto.createHmac('sha256', secretKey).update(dataToSign).digest('hex');
+
 
   if (signature !== expectedSignature) {
     return res.status(403).json({ error: 'Forbidden: Invalid API signature.' });
@@ -493,6 +495,28 @@ app.get('/api/stream/:id', async (req, res) => {
       }
     }
 
+    // Try Scenario 3 (embed_json resolver)
+    if (!resolvedVideoUrl && item.embed_json && Array.isArray(item.embed_json) && item.embed_json.length > 0) {
+      const embedItem = item.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
+      if (embedItem) {
+        const embedJsonResult = await resolveEmbedJsonStream(embedItem);
+        if (embedJsonResult) {
+          resolvedVideoUrl = embedJsonResult.videoUrl;
+          resolvedQualities = embedJsonResult.qualities || [];
+          if (resolvedQualities.length === 0 && resolvedVideoUrl) {
+            const qualityMatch = (embedItem.name + resolvedVideoUrl).match(/(\d{3,4}p)/i);
+            resolvedQualities = [{
+              quality: qualityMatch ? qualityMatch[1].toUpperCase() : 'HD',
+              size: embedItem.size || 'N/A',
+              url: resolvedVideoUrl
+            }];
+          }
+        }
+      }
+    }
+
+
+
     if (!resolvedVideoUrl) {
       console.log(`⚠️ Failed to resolve stream for primary ID ${targetId}. Trying auto-recovery fallback...`);
       const baseTitle = item.title.replace(/\[.*?\]/g, '').trim();
@@ -540,6 +564,27 @@ app.get('/api/stream/:id', async (req, res) => {
                   resolvedQualities = watchboxResult.qualities || [];
                 }
               }
+
+              if (!resolvedVideoUrl && altItemMeta.embed_json && Array.isArray(altItemMeta.embed_json) && altItemMeta.embed_json.length > 0) {
+                const altEmbedItem = altItemMeta.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
+                if (altEmbedItem) {
+                  const embedJsonResult = await resolveEmbedJsonStream(altEmbedItem);
+                  if (embedJsonResult) {
+                    resolvedVideoUrl = embedJsonResult.videoUrl;
+                    resolvedQualities = embedJsonResult.qualities || [];
+                    if (resolvedQualities.length === 0 && resolvedVideoUrl) {
+                      const qualityMatch = (altEmbedItem.name + resolvedVideoUrl).match(/(\d{3,4}p)/i);
+                      resolvedQualities = [{
+                        quality: qualityMatch ? qualityMatch[1].toUpperCase() : 'HD',
+                        size: altEmbedItem.size || 'N/A',
+                        url: resolvedVideoUrl
+                      }];
+                    }
+                  }
+                }
+              }
+
+
 
               if (resolvedVideoUrl) {
                 console.log(`🔥 Recovery SUCCESS! Using stream from alternate ID ${altItem.id}`);
@@ -659,6 +704,28 @@ app.get('/api/download-qualities/:id', async (req, res) => {
         }
       }
     }
+
+    // Strategy C: embed_json
+    if (qualities.length === 0 && item.embed_json && Array.isArray(item.embed_json) && item.embed_json.length > 0) {
+      const targetItem = item.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
+      if (targetItem) {
+        const embedJsonResult = await resolveEmbedJsonStream(targetItem);
+        if (embedJsonResult) {
+          if (embedJsonResult.qualities && embedJsonResult.qualities.length > 0) {
+            qualities = embedJsonResult.qualities;
+          } else if (embedJsonResult.videoUrl) {
+            const qualityMatch = (targetItem.name + embedJsonResult.videoUrl).match(/(\d{3,4}p)/i);
+            qualities = [{
+              quality: qualityMatch ? qualityMatch[1].toUpperCase() : 'HD',
+              size: targetItem.size || 'N/A',
+              url: embedJsonResult.videoUrl
+            }];
+          }
+        }
+      }
+    }
+
+
 
     if (qualities.length === 0) {
       return res.status(404).json({ error: 'No download qualities found for this media.' });
@@ -847,6 +914,76 @@ async function resolveWatchboxStream(id, se, ep, dp, na) {
     return null;
   }
 }
+
+/**
+ * Resolves streams using the embed_json configuration (concurrently across watchbox servers)
+ */
+async function resolveEmbedJsonStream(embedItem) {
+  const WATCHBOX_DOMAINS = [
+    'speed.watch22.shop',
+    'play.watch22.shop',
+    'play.watch21.shop',
+    'test.watch22.shop',
+    'playnew.watch21.shop'
+  ];
+  const netmirrorReferer = 'https://netmirror.global/';
+
+  console.log(`⚡ Concurrently resolving embed_json stream for name=${embedItem.name}...`);
+
+  const promises = WATCHBOX_DOMAINS.map(async (domain) => {
+    try {
+      const watchboxBaseUrl = `https://${domain}/play/${embedItem.name}.php?url=${encodeURIComponent(embedItem.url)}&size=${encodeURIComponent(embedItem.size || '')}&se=${embedItem.se}&ep=${embedItem.ep}&name=${encodeURIComponent(embedItem.name)}&exten=1`;
+      const dummyUrl = `${watchboxBaseUrl}&ts=0&sig=0`;
+
+      const dummyRes = await axios.get(dummyUrl, {
+        headers: getHeaders(netmirrorReferer),
+        timeout: 6000
+      });
+
+      let serverTime = null;
+      const timeMatch = dummyRes.data.match(/Time not Found\.<br><br>(\d+)/);
+      let htmlContent = '';
+
+      if (timeMatch) {
+        serverTime = timeMatch[1];
+        const signature = crypto.createHmac('sha256', HM_SECRET).update(String(serverTime)).digest('hex');
+        const authUrl = `${watchboxBaseUrl}&ts=${serverTime}&sig=${signature}`;
+
+        const authRes = await axios.get(authUrl, {
+          headers: getHeaders(netmirrorReferer),
+          timeout: 6000
+        });
+        htmlContent = authRes.data;
+      } else {
+        htmlContent = dummyRes.data;
+      }
+
+
+      if (htmlContent.includes('Server Buzy') || htmlContent.includes('Not Found. or Come from listed Website.')) {
+        throw new Error(`Domain ${domain} returned busy/not found.`);
+      }
+
+      const resolvedUrl = parseWatchboxHtml(htmlContent);
+      if (resolvedUrl) {
+        console.log(`[EmbedJson] Fast resolution SUCCESS on domain: ${domain}`);
+        const parsedQualities = parseWatchboxQualities(htmlContent);
+        return { videoUrl: resolvedUrl, qualities: parsedQualities };
+      }
+      throw new Error(`Domain ${domain} failed parsing HTML.`);
+    } catch (err) {
+      throw err;
+    }
+  });
+
+  try {
+    const result = await Promise.any(promises);
+    return result;
+  } catch (aggregateError) {
+    console.log('❌ All concurrent watchbox servers failed resolving embed_json links.');
+    return null;
+  }
+}
+
 
 /**
  * Parses watchbox HTML to find the direct video link

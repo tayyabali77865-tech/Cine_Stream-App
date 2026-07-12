@@ -450,7 +450,7 @@ export default function PlayerScreen({ route, navigation }) {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
-      <StatusBar hidden />
+      <StatusBar barStyle="light-content" backgroundColor="#050507" translucent={false} />
 
       {/* ── Video Player ── */}
       <Video
@@ -462,14 +462,21 @@ export default function PlayerScreen({ route, navigation }) {
           }
         }}
         style={styles.video}
-        useNativeControls
+        useNativeControls={true}
         resizeMode={ResizeMode.CONTAIN}
         shouldPlay
+        bufferConfig={{
+          maxBufferMs: 15000,
+          minBufferMs: 2500,
+          bufferForPlaybackMs: 1000,
+          bufferForPlaybackAfterRebufferMs: 2000
+        }}
         onError={(err) => {
           console.error('[Player] video error:', err);
           dispatchStream({ type: 'ERROR', error: 'Playback failed. The session may have expired.' });
         }}
       />
+
 
       {/* ── Info + Download Panel ── */}
       <ScrollView style={styles.panel} contentContainerStyle={styles.panelContent}>
@@ -614,7 +621,7 @@ export default function PlayerScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#050507' },
-  video: { width: '100%', height: VIDEO_HEIGHT },
+  video: { width: '100%', height: VIDEO_HEIGHT, zIndex: 10, elevation: 10 },
   center: {
     flex: 1,
     backgroundColor: '#050507',

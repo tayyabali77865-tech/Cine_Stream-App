@@ -133,8 +133,10 @@ const checkHealth = async (baseUrl) => {
 
 async function customFetch(endpoint, options = {}) {
   const timestamp = String(Date.now());
-  const dataToSign = `/api${endpoint}${timestamp}`;
+  const decodedEndpoint = decodeURIComponent(endpoint.replace(/\+/g, ' '));
+  const dataToSign = `/api${decodedEndpoint}${timestamp}`;
   const signature = CryptoJS.HmacSHA256(dataToSign, secretKey).toString(CryptoJS.enc.Hex);
+
 
   const headers = {
     ...(options.headers || {}),
