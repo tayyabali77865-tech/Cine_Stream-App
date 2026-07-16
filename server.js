@@ -375,14 +375,18 @@ app.get('/api/details/:id', async (req, res) => {
     if (titleLower.includes('telugu')) alternateDubs.push('Telugu');
     if (alternateDubs.length === 0) alternateDubs.push('Original');
 
+    const hasValidSeasons = Array.isArray(item.season) && item.season.length > 0 && item.season.some(s => s && s.se > 0);
+    const mediaType = hasValidSeasons ? 'TV Show' : 'Movie';
+    const seasonsList = hasValidSeasons ? item.season : null;
+
     res.setHeader('X-Cache-Status', status);
     res.json({
       id: item.id,
       title: item.title ? item.title.trim() : 'Unknown Title',
       description: item.dis || 'No description available.',
       poster: item.backdrop_path || 'https://placehold.co/300x450',
-      type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
-      seasons: item.season || null,
+      type: mediaType,
+      seasons: seasonsList,
       audioLanguages: alternateDubs,
     });
   } catch (error) {

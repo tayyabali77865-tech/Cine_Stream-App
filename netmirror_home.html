@@ -569,7 +569,8 @@
     async function makeHeaders(endpoint) {
       const apiKeyInput = document.getElementById('authKey').value || 'cinestream_secret_secure_key_2026';
       const timestamp = String(Date.now());
-      const dataToSign = `/api${endpoint}${timestamp}`;
+      const decodedEndpoint = decodeURIComponent(endpoint.replace(/\+/g, ' '));
+      const dataToSign = `/api${decodedEndpoint}${timestamp}`;
 
       // Crypto signature equivalent in client browser JS
       const encoder = new TextEncoder();
