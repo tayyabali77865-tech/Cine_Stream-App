@@ -156,6 +156,9 @@ function applyClientSideFilter(list, filterName, categoryName) {
 }
 
 function sortMediaList(list, isSearchActive, activeFilter) {
+  if (isSearchActive) {
+    return list; // Preserve original search results relevance order from API
+  }
   return [...list].sort((a, b) => {
     // Always sort by rating first (highest first)
     const ratingA = parseFloat(a.rating) || 0;
@@ -213,7 +216,8 @@ const MediaCard = memo(({ posterUri, title, type, onPress }) => (
         source={posterUri}
         style={styles.poster}
         contentFit="cover"
-        transition={150}
+        transition={0} // Instantly render poster without fade-in lag
+        priority="high" // Prioritize network bandwidth for poster loads
         cachePolicy="memory-disk"
       />
       <View style={styles.badgeContainer}>
@@ -464,6 +468,8 @@ export default function HomeScreen({ navigation }) {
   const selectCategory = useCallback((categoryName) => {
     setActiveCategory(categoryName);
     setShowSidebar(false);
+    setSearchQuery(''); // Reset search input query
+    setIsSearching(false); // Disable search mode
     loadTrendingData(0, false, activeFilter, categoryName);
   }, [activeFilter, loadTrendingData]);
 
