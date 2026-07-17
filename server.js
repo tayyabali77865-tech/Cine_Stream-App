@@ -207,12 +207,13 @@ async function fetchFromNetmirrorWithRetry(endpoint) {
           timeout: 4000
         });
 
-        if (res.data && (res.data.results || res.data.filters)) {
+        // Accept any response that is an object and contains data properties (since details, watchbox etc. may not have results/filters key)
+        if (res.data && typeof res.data === 'object' && Object.keys(res.data).length > 0) {
           circuitBreaker.success();
           return res.data;
         }
 
-        throw new Error('Invalid response structure from NetMirror.');
+        throw new Error('Invalid or empty response structure from NetMirror.');
       } catch (err) {
         lastError = err;
         console.warn(`[Fetcher] Attempt ${attempt} failed on mirror ${activeMirror}: ${err.message}`);
