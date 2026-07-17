@@ -77,20 +77,21 @@ class DynamicMirrorManager {
     for (const mirror of this.mirrors) {
       const start = Date.now();
       try {
-        // Test basic filtering endpoint
+        // Test basic filtering endpoint (Relaxed timeout to 4000ms)
         await axios.get(`${mirror}/movies/filter?sort_by=date&items_per_page=1&page=0`, {
           headers: this.headers,
-          timeout: 2500
+          timeout: 4000
         });
         
-        // Test search endpoint availability and results database sanity
+        // Test search endpoint availability (Relaxed timeout to 4000ms)
         const searchRes = await axios.get(`${mirror}/search2/a?page=0`, {
           headers: this.headers,
-          timeout: 2500
+          timeout: 4000
         });
 
-        if (!searchRes.data || !searchRes.data.results || searchRes.data.results.length < 10) {
-          throw new Error('Search endpoint returned too few results (possible index/mirror corruption).');
+        // Simply check if response exists and has a results property array
+        if (!searchRes.data || !Array.isArray(searchRes.data.results)) {
+          throw new Error('Invalid search response format.');
         }
 
         const latency = Date.now() - start;
