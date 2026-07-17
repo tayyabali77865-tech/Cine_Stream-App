@@ -704,7 +704,7 @@ export default function HomeScreen({ navigation }) {
           ListEmptyComponent={listEmpty}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.4}
-          ListFooterComponent={ListFooter}
+          ListFooterComponent={<ListFooter loadingMore={loadingMore} />}
           extraData={loadingMore}
         />
       )}
