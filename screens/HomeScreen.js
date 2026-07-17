@@ -48,6 +48,8 @@ const LANGUAGES = [
   'French', 'Marathi', 'Arabic', 'Urdu', 'Chinese'
 ];
 
+const SEARCH_LANGUAGES = ['All', 'Hindi', 'English', 'Original', 'Tamil', 'Bengali', 'Telugu', 'Malayalam'];
+
 // ─── Pure Utility Functions (module-level — zero allocation per render) ──────
 
 /**
@@ -308,6 +310,8 @@ export default function HomeScreen({ navigation }) {
   const [hasMore, setHasMore] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [searchLanguage, setSearchLanguage] = useState('All');
+  const [showSearchFilterMenu, setShowSearchFilterMenu] = useState(false);
   const [activeFilter, setActiveFilter] = useState('Trending');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
@@ -469,6 +473,8 @@ export default function HomeScreen({ navigation }) {
     if (searchQuery.trim() === '') {
       if (isSearching) {
         setIsSearching(false);
+        setSearchLanguage('All');
+        setShowSearchFilterMenu(false);
         loadTrendingData(0, false, activeFilter, activeCategory);
       }
       return;
@@ -527,8 +533,23 @@ export default function HomeScreen({ navigation }) {
     setShowSidebar(false);
     setSearchQuery(''); // Reset search input query
     setIsSearching(false); // Disable search mode
+    setSearchLanguage('All');
+    setShowSearchFilterMenu(false);
     loadTrendingData(0, false, activeFilter, categoryName);
   }, [activeFilter, loadTrendingData]);
+
+  // Memoized search filtered list
+  const filteredSearchList = useMemo(() => {
+    if (!isSearching) return [];
+    if (searchLanguage === 'All') return mediaList;
+    return mediaList.filter(item => {
+      const detected = detectLanguage(item.title);
+      if (searchLanguage === 'Original') {
+        return detected === 'Original';
+      }
+      return detected.toLowerCase() === searchLanguage.toLowerCase();
+    });
+  }, [mediaList, isSearching, searchLanguage]);
 
   // ─── Render Helpers ───────────────────────────────────────────────────────
 
@@ -580,7 +601,11 @@ export default function HomeScreen({ navigation }) {
     }
   }, [isSearching, searchQuery, triggerSearch, loadTrendingData, activeFilter, activeCategory]);
 
-  const handleClearSearch = useCallback(() => handleSearch(''), [handleSearch]);
+  const handleClearSearch = useCallback(() => {
+    handleSearch('');
+    setSearchLanguage('All');
+    setShowSearchFilterMenu(false);
+  }, [handleSearch]);
 
   const handleToggleFilterMenu = useCallback(
     () => setShowFilterMenu(prev => !prev),
@@ -626,7 +651,7 @@ export default function HomeScreen({ navigation }) {
         <Text style={styles.sectionHeader}>
           {isSearching ? `Search Results` : `${activeCategory} - ${activeFilter}`}
         </Text>
-        {!isSearching && (
+        {!isSearching ? (
           <TouchableOpacity
             style={styles.filterBtn}
             activeOpacity={0.7}
@@ -634,8 +659,43 @@ export default function HomeScreen({ navigation }) {
           >
             <Text style={styles.filterBtnText}>Filters ☰</Text>
           </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.filterBtn}
+            activeOpacity={0.7}
+            onPress={() => setShowSearchFilterMenu(prev => !prev)}
+          >
+            <Text style={styles.filterBtnText}>{`Lang: ${searchLanguage} ▾`}</Text>
+          </TouchableOpacity>
         )}
       </View>
+
+      {/* Search Filter Horizontal Pill Selector Panel */}
+      {isSearching && showSearchFilterMenu && (
+        <View style={styles.filterMenuContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterScroll}
+          >
+            {SEARCH_LANGUAGES.map((langName) => {
+              const isSelected = searchLanguage === langName;
+              return (
+                <TouchableOpacity
+                  key={langName}
+                  style={[styles.filterPill, isSelected && styles.filterPillActive]}
+                  activeOpacity={0.7}
+                  onPress={() => setSearchLanguage(langName)}
+                >
+                  <Text style={[styles.filterPillText, isSelected && styles.filterPillTextActive]}>
+                    {langName}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Filter Horizontal Pill Selector Panel */}
       {showFilterMenu && !isSearching && (
@@ -690,7 +750,7 @@ export default function HomeScreen({ navigation }) {
       ) : (
         <FlatList
           key="media-list"
-          data={mediaList}
+          data={isSearching ? filteredSearchList : mediaList}
           renderItem={renderCard}
           keyExtractor={item => item.id}
           numColumns={2}
