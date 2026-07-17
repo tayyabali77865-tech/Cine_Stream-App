@@ -449,7 +449,7 @@ export default function HomeScreen({ navigation }) {
       loadingRef.current = true;
       setHasMore(true);
       const data = await apiService.searchMedia(trimmed, 0);
-      setMediaList(sortMediaList(makeUnique(data), true, trimmed));
+      setMediaList(makeUnique(data)); // Directly render original search results from API
       setPage(0);
     } catch (e) {
       console.error(e);
@@ -492,7 +492,7 @@ export default function HomeScreen({ navigation }) {
       if (data.length === 0) {
         setHasMore(false);
       } else {
-        const sortedNewBatch = sortMediaList(data, true, query);
+        const sortedNewBatch = data; // Directly append raw pagination search results from API
         setMediaList(prev => makeUnique([...prev, ...sortedNewBatch]));
         setPage(targetPage);
       }
