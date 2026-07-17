@@ -28,9 +28,9 @@ let activeBaseUrl = preferredBaseUrl;
 
 // ─── URL Cooldown Tracker ─────────────────────────────────────────────────────
 
-// Track failed URLs with cooldown (don't retry for 30 seconds)
+// Track failed URLs with cooldown (don't retry for 6 seconds)
 const failedUrlCooldown = new Map(); // url -> timestamp when it failed
-const COOLDOWN_MS = 30000; // 30 seconds
+const COOLDOWN_MS = 6000; // 6 seconds
 
 function isUrlOnCooldown(url) {
   const failedAt = failedUrlCooldown.get(url);
