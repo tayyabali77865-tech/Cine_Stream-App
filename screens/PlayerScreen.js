@@ -596,7 +596,7 @@ export default function PlayerScreen({ route, navigation }) {
 
   // ── Render Calculations ──────────────────────────────────────────────────
   const isPlaying = playbackStatus && playbackStatus.isPlaying;
-  const isBuffering = playbackStatus && playbackStatus.isBuffering;
+  const isBuffering = playbackStatus && playbackStatus.isBuffering && !isPlaying;
   const position = isSeeking ? seekPosition : (playbackStatus ? playbackStatus.positionMillis : 0);
   const duration = playbackStatus ? playbackStatus.durationMillis || 0 : 0;
   const progressPercent = duration > 0 ? (position / duration) * 100 : 0;
@@ -631,9 +631,9 @@ export default function PlayerScreen({ route, navigation }) {
             shouldPlay
             bufferConfig={{
               maxBufferMs: 15000,
-              minBufferMs: 2500,
-              bufferForPlaybackMs: 1000,
-              bufferForPlaybackAfterRebufferMs: 2000
+              minBufferMs: 1500,
+              bufferForPlaybackMs: 800,
+              bufferForPlaybackAfterRebufferMs: 1500
             }}
             onPlaybackStatusUpdate={(status) => {
               if (!isSeeking) setPlaybackStatus(status);

@@ -307,10 +307,10 @@ const MediaCard = memo(({ posterUri, title, type, onPress }) => (
   >
     <View style={styles.posterWrapper}>
       <ExpoImage
-        source={posterUri}
+        source={{ uri: posterUri }}
         style={styles.poster}
         contentFit="cover"
-        transition={0} // Instantly render poster without fade-in lag
+        transition={200} // Smooth premium fade-in
         priority="high" // Prioritize network bandwidth for poster loads
         cachePolicy="memory-disk"
       />
