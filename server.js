@@ -327,7 +327,10 @@ app.get('/api/search', async (req, res) => {
   if (!query) return res.json([]);
 
   try {
-    const formattedQuery = encodeURIComponent(query.trim()).replace(/%20/g, '+');
+    // 1. Decode incoming query to strip double-encoding (e.g. %2520 -> %20)
+    const decodedQuery = decodeURIComponent(query);
+    // 2. Format spaces as '+' which is the standard parser notation for NetMirror search endpoints
+    const formattedQuery = encodeURIComponent(decodedQuery.trim()).replace(/%20/g, '+');
     const endpoint = `/search2/${formattedQuery}?page=${page}`;
 
     // ✅ Use searchCache — same query returned instantly on 2nd hit
