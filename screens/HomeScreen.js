@@ -509,11 +509,15 @@ export default function HomeScreen({ navigation }) {
       setLoading(true);
       loadingRef.current = true;
       setHasMore(true);
+      setSearchLanguage('All'); // Reset search language to 'All' on new search
+      setShowSearchFilterMenu(false); // Hide the language menu
+      console.log(`[Search] Triggering search API for query: "${trimmed}"`);
       const data = await apiService.searchMedia(trimmed, 0);
+      console.log(`[Search] API returned ${data.length} results`);
       setMediaList(makeUnique(data)); // Directly render original search results from API
       setPage(0);
     } catch (e) {
-      console.error(e);
+      console.error('[Search] Error:', e);
       setIsOffline(true);
     } finally {
       setLoading(false);
@@ -631,14 +635,17 @@ export default function HomeScreen({ navigation }) {
   // Memoized search filtered list
   const filteredSearchList = useMemo(() => {
     if (!isSearching) return [];
+    console.log(`[SearchFilter] Filtering ${mediaList.length} items with lang: "${searchLanguage}"`);
     if (searchLanguage === 'All') return mediaList;
-    return mediaList.filter(item => {
+    const filtered = mediaList.filter(item => {
       const detected = detectLanguage(item.title);
       if (searchLanguage === 'Original') {
         return detected === 'Original';
       }
       return detected.toLowerCase() === searchLanguage.toLowerCase();
     });
+    console.log(`[SearchFilter] Filtered result count: ${filtered.length}`);
+    return filtered;
   }, [mediaList, isSearching, searchLanguage]);
 
   // ─── Render Helpers ───────────────────────────────────────────────────────
