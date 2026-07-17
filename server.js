@@ -419,13 +419,8 @@ app.get('/api/stream/:id', async (req, res) => {
   try {
     const cacheKey = `${id}:${se}:${ep}:${lang}`;
 
-    // ✅ Check streamCache first — avoid re-resolving for same stream
-    const cachedEntry = streamCache.cache.get(cacheKey);
-    if (cachedEntry && (Date.now() - cachedEntry.fetchedAt) < parseInt(process.env.CACHE_STREAM_TTL_MS || '600000')) {
-      console.log(`⚡ [StreamCache] HIT for key: ${cacheKey}`);
-      res.setHeader('X-Cache-Status', 'HIT');
-      return res.json(cachedEntry.value);
-    }
+    // ✅ Always perform fresh stream resolution to avoid CDN URL signature expiration (usually < 2 minutes)
+    // streamCache is bypassed to prevent "session expired" errors across different client IPs.
 
     // A. Intercept if user has custom overridden URLs
     const customLinks = await db.getOverride(String(id));
@@ -477,12 +472,13 @@ app.get('/api/stream/:id', async (req, res) => {
       }
     }
 
+    const hasValidSeasons = Array.isArray(item.season) && item.season.length > 0 && item.season.some(s => s && s.se > 0);
     let targetSe = se;
     let targetEp = ep;
-    if (item.media_type !== 'tv' || !item.season || (Array.isArray(item.season) && item.season.length === 0)) {
+    if (item.media_type !== 'tv' || !item.season || !hasValidSeasons) {
       targetSe = '';
       targetEp = '';
-      console.log(`🎬 Target item is classified as Movie/Single release. Clearing season/episode parameters.`);
+      console.log(`🎬 Target item is classified as Movie/Single release or has no valid seasons. Clearing season/episode parameters.`);
     }
 
     // Try Scenario 1 (direct embed resolver)
@@ -635,8 +631,6 @@ app.get('/api/stream/:id', async (req, res) => {
       referer: REFERER_URL
     };
 
-    // ✅ Cache the resolved stream to avoid re-resolving for 10 minutes
-    streamCache.set(cacheKey, streamResult);
     console.log(`🔥 Resolved final streaming file: ${resolvedVideoUrl}`);
     res.setHeader('X-Cache-Status', 'MISS');
     res.json(streamResult);
