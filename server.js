@@ -165,20 +165,28 @@ app.use((req, res, next) => {
 const REFERER_URL = 'https://fmoviesunblocked.net/';
 const HM_SECRET = 'net###@@sss';
 
-const getHeaders = (referer = REFERER_URL) => ({
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Referer': referer,
-  'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"Windows"',
-  'Sec-Fetch-Dest': 'document',
-  'Sec-Fetch-Mode': 'navigate',
-  'Sec-Fetch-Site': 'cross-site',
-  'Sec-Fetch-User': '?1',
-  'Upgrade-Insecure-Requests': '1'
-});
+const getHeaders = (referer = REFERER_URL, clientIp = null) => {
+  const hdrs = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': referer,
+    'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'cross-site',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1'
+  };
+  if (clientIp) {
+    hdrs['X-Forwarded-For'] = clientIp;
+    hdrs['X-Real-IP'] = clientIp;
+    hdrs['Client-IP'] = clientIp;
+  }
+  return hdrs;
+};
 
 async function isDeleted(id) {
   return db.isDeleted(id);
@@ -415,6 +423,7 @@ app.get('/api/stream/:id', async (req, res) => {
   const se = req.query.season || '1';
   const ep = req.query.episode || '1';
   const lang = req.query.lang || 'Hindi';
+  const clientIp = req.headers['x-forwarded-for'] || req.ip;
 
   try {
     const cacheKey = `${id}:${se}:${ep}:${lang}`;
@@ -510,7 +519,7 @@ app.get('/api/stream/:id', async (req, res) => {
       const dp = item.dp;
       const titleClean = item.title ? item.title.trim() : 'Video';
       const na = Buffer.from(titleClean).toString('base64');
-      const watchboxResult = await resolveWatchboxStream(targetId, targetSe, targetEp, dp, na);
+      const watchboxResult = await resolveWatchboxStream(targetId, targetSe, targetEp, dp, na, clientIp);
       if (watchboxResult) {
         resolvedVideoUrl = watchboxResult.videoUrl;
         resolvedQualities = watchboxResult.qualities || [];
@@ -521,7 +530,7 @@ app.get('/api/stream/:id', async (req, res) => {
     if (!resolvedVideoUrl && item.embed_json && Array.isArray(item.embed_json) && item.embed_json.length > 0) {
       const embedItem = item.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
       if (embedItem) {
-        const embedJsonResult = await resolveEmbedJsonStream(embedItem);
+        const embedJsonResult = await resolveEmbedJsonStream(embedItem, clientIp);
         if (embedJsonResult) {
           resolvedVideoUrl = embedJsonResult.videoUrl;
           resolvedQualities = embedJsonResult.qualities || [];
@@ -580,7 +589,7 @@ app.get('/api/stream/:id', async (req, res) => {
 
               if (!resolvedVideoUrl && altItemMeta.dp) {
                 const altNa = Buffer.from(altItemMeta.title ? altItemMeta.title.trim() : 'Video').toString('base64');
-                const watchboxResult = await resolveWatchboxStream(altItem.id, targetSe, targetEp, altItemMeta.dp, altNa);
+                const watchboxResult = await resolveWatchboxStream(altItem.id, targetSe, targetEp, altItemMeta.dp, altNa, clientIp);
                 if (watchboxResult) {
                   resolvedVideoUrl = watchboxResult.videoUrl;
                   resolvedQualities = watchboxResult.qualities || [];
@@ -590,7 +599,7 @@ app.get('/api/stream/:id', async (req, res) => {
               if (!resolvedVideoUrl && altItemMeta.embed_json && Array.isArray(altItemMeta.embed_json) && altItemMeta.embed_json.length > 0) {
                 const altEmbedItem = altItemMeta.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
                 if (altEmbedItem) {
-                  const embedJsonResult = await resolveEmbedJsonStream(altEmbedItem);
+                  const embedJsonResult = await resolveEmbedJsonStream(altEmbedItem, clientIp);
                   if (embedJsonResult) {
                     resolvedVideoUrl = embedJsonResult.videoUrl;
                     resolvedQualities = embedJsonResult.qualities || [];
@@ -651,6 +660,7 @@ app.get('/api/download-qualities/:id', async (req, res) => {
   const se = req.query.season || '';
   const ep = req.query.episode || '';
   const lang = req.query.lang || 'Hindi';
+  const clientIp = req.headers['x-forwarded-for'] || req.ip;
 
   try {
     // A. Intercept if user has custom overridden download URLs
@@ -703,7 +713,7 @@ app.get('/api/download-qualities/:id', async (req, res) => {
       const dp = item.dp;
       const titleClean = item.title ? item.title.trim() : 'Video';
       const na = Buffer.from(titleClean).toString('base64');
-      qualities = await extractWatchboxQualities(targetId, targetSe, targetEp, dp, na);
+      qualities = await extractWatchboxQualities(targetId, targetSe, targetEp, dp, na, clientIp);
     }
 
     // Strategy B: Embed / drivehub-style — single quality from s= param
@@ -734,7 +744,7 @@ app.get('/api/download-qualities/:id', async (req, res) => {
     if (qualities.length === 0 && item.embed_json && Array.isArray(item.embed_json) && item.embed_json.length > 0) {
       const targetItem = item.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
       if (targetItem) {
-        const embedJsonResult = await resolveEmbedJsonStream(targetItem);
+        const embedJsonResult = await resolveEmbedJsonStream(targetItem, clientIp);
         if (embedJsonResult) {
           if (embedJsonResult.qualities && embedJsonResult.qualities.length > 0) {
             qualities = embedJsonResult.qualities;
@@ -767,7 +777,7 @@ app.get('/api/download-qualities/:id', async (req, res) => {
 /**
  * Extracts download quality options from watchbox player HTML by querying all domains concurrently.
  */
-async function extractWatchboxQualities(id, se, ep, dp, na) {
+async function extractWatchboxQualities(id, se, ep, dp, na, clientIp = null) {
   const WATCHBOX_DOMAINS = [
     'speed.watch22.shop',
     'play.watch22.shop',
@@ -780,7 +790,7 @@ async function extractWatchboxQualities(id, se, ep, dp, na) {
   const promises = WATCHBOX_DOMAINS.map(async (domain) => {
     const baseUrl = `https://${domain}/play/watchbox.php?id=${id}&se=${se}&ep=${ep}&dp=${dp}&na=${encodeURIComponent(na)}&exten=1`;
     const dummyRes = await axios.get(`${baseUrl}&ts=0&sig=0`, {
-      headers: getHeaders(netmirrorReferer),
+      headers: getHeaders(netmirrorReferer, clientIp),
       timeout: 2500
     });
 
@@ -790,7 +800,7 @@ async function extractWatchboxQualities(id, se, ep, dp, na) {
     const serverTime = timeMatch[1];
     const signature = crypto.createHmac('sha256', HM_SECRET).update(String(serverTime)).digest('hex');
     const authRes = await axios.get(`${baseUrl}&ts=${serverTime}&sig=${signature}`, {
-      headers: getHeaders(netmirrorReferer),
+      headers: getHeaders(netmirrorReferer, clientIp),
       timeout: 3000
     });
     const html = authRes.data;
@@ -875,7 +885,7 @@ async function extractDirectVideoLink(hostUrl) {
 /**
  * Syncs time and generates dynamic HMAC signatures to unlock watchbox player streams
  */
-async function resolveWatchboxStream(id, se, ep, dp, na) {
+async function resolveWatchboxStream(id, se, ep, dp, na, clientIp = null) {
   const WATCHBOX_DOMAINS = [
     'speed.watch22.shop',
     'play.watch22.shop',
@@ -893,7 +903,7 @@ async function resolveWatchboxStream(id, se, ep, dp, na) {
       const dummyUrl = `${watchboxBaseUrl}&ts=0&sig=0`;
 
       const dummyRes = await axios.get(dummyUrl, {
-        headers: getHeaders(netmirrorReferer),
+        headers: getHeaders(netmirrorReferer, clientIp),
         timeout: 2500
       });
 
@@ -907,7 +917,7 @@ async function resolveWatchboxStream(id, se, ep, dp, na) {
         const authUrl = `${watchboxBaseUrl}&ts=${serverTime}&sig=${signature}`;
 
         const authRes = await axios.get(authUrl, {
-          headers: getHeaders(netmirrorReferer),
+          headers: getHeaders(netmirrorReferer, clientIp),
           timeout: 3000
         });
         htmlContent = authRes.data;
@@ -943,7 +953,7 @@ async function resolveWatchboxStream(id, se, ep, dp, na) {
 /**
  * Resolves streams using the embed_json configuration (concurrently across watchbox servers)
  */
-async function resolveEmbedJsonStream(embedItem) {
+async function resolveEmbedJsonStream(embedItem, clientIp = null) {
   const WATCHBOX_DOMAINS = [
     'speed.watch22.shop',
     'play.watch22.shop',
@@ -961,7 +971,7 @@ async function resolveEmbedJsonStream(embedItem) {
       const dummyUrl = `${watchboxBaseUrl}&ts=0&sig=0`;
 
       const dummyRes = await axios.get(dummyUrl, {
-        headers: getHeaders(netmirrorReferer),
+        headers: getHeaders(netmirrorReferer, clientIp),
         timeout: 6000
       });
 
@@ -975,7 +985,7 @@ async function resolveEmbedJsonStream(embedItem) {
         const authUrl = `${watchboxBaseUrl}&ts=${serverTime}&sig=${signature}`;
 
         const authRes = await axios.get(authUrl, {
-          headers: getHeaders(netmirrorReferer),
+          headers: getHeaders(netmirrorReferer, clientIp),
           timeout: 6000
         });
         htmlContent = authRes.data;
