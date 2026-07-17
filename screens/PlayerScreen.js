@@ -10,14 +10,16 @@ import {
   Modal,
   Alert,
   ScrollView,
-  Dimensions
+  Dimensions,
+  Platform
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { apiService } from '../services/apiService';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import * as NavigationBar from 'expo-navigation-bar';
 
 // ─── Screen Dimensions ────────────────────────────────────────────────────────
 
@@ -156,6 +158,9 @@ export default function PlayerScreen({ route, navigation }) {
   const [controlsVisible, setControlsVisible] = React.useState(true);
   const [isLocked, setIsLocked] = React.useState(false);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [isLandscape, setIsLandscape] = React.useState(false);
+  const [isSeeking, setIsSeeking] = React.useState(false);
+  const [seekPosition, setSeekPosition] = React.useState(0);
 
   // ── Refs (no re-render needed) ────────────────────────────────────────────
   const videoRef = useRef(null);
@@ -219,6 +224,10 @@ export default function PlayerScreen({ route, navigation }) {
       if (downloadRef.current) {
         downloadRef.current.cancelAsync().catch(() => { });
       }
+      // Restore system navigation bar visibility
+      if (Platform.OS === 'android') {
+        NavigationBar.setVisibilityAsync('visible').catch(() => {});
+      }
       // Re-lock orientation to portrait when leaving the screen
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch((err) => {
         console.warn('Could not lock screen orientation:', err);
@@ -226,6 +235,18 @@ export default function PlayerScreen({ route, navigation }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Toggle device virtual navigation buttons dynamically depending on fullscreen mode
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      if (isFullscreen) {
+        NavigationBar.setVisibilityAsync('hidden').catch(() => {});
+        NavigationBar.setBehaviorAsync('immersive-sticky').catch(() => {});
+      } else {
+        NavigationBar.setVisibilityAsync('visible').catch(() => {});
+      }
+    }
+  }, [isFullscreen]);
 
   // ─── Custom Control Helpers ────────────────────────────────────────────────
   const resetControlsTimer = useCallback(() => {
@@ -262,20 +283,25 @@ export default function PlayerScreen({ route, navigation }) {
     await videoRef.current.setStatusAsync({ positionMillis: newPos });
   }, [playbackStatus, resetControlsTimer]);
 
-  const toggleFullscreen = useCallback(async () => {
+  const toggleFullscreen = useCallback(() => {
+    resetControlsTimer();
+    setIsFullscreen(prev => !prev);
+  }, [resetControlsTimer]);
+
+  const toggleRotate = useCallback(async () => {
     resetControlsTimer();
     try {
-      if (isFullscreen) {
+      if (isLandscape) {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-        setIsFullscreen(false);
+        setIsLandscape(false);
       } else {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
-        setIsFullscreen(true);
+        setIsLandscape(true);
       }
     } catch (err) {
       console.warn('Orientation change failed:', err);
     }
-  }, [isFullscreen, resetControlsTimer]);
+  }, [isLandscape, resetControlsTimer]);
 
   // Initial trigger for controls hide
   useEffect(() => {
@@ -506,6 +532,36 @@ export default function PlayerScreen({ route, navigation }) {
     dispatchDl({ type: 'CANCEL' });
   }, [clearOfflineTimer]);
 
+  // ── Track layout coordinate details ─────────────────────────────────────────
+  const trackLayoutRef = useRef({ x: 0, width: 1 });
+  const handleTrackLayout = useCallback((e) => {
+    // Measure absolute screen coordinates dynamically
+    e.currentTarget.measure((x, y, width, height, pageX, pageY) => {
+      trackLayoutRef.current = { x: pageX, width: width || 1 };
+    });
+  }, []);
+
+  const handleTouchSeek = useCallback(async (e, isEnded = false) => {
+    resetControlsTimer();
+    const touchX = e.nativeEvent.pageX - trackLayoutRef.current.x;
+    const width = trackLayoutRef.current.width;
+    
+    // Bind coordinates dynamically between 0 and track width
+    const pct = Math.max(0, Math.min(touchX / width, 1));
+    const durationVal = playbackStatus ? playbackStatus.durationMillis || 0 : 0;
+    const targetPos = Math.round(pct * durationVal);
+
+    if (isEnded) {
+      setIsSeeking(false);
+      if (videoRef.current) {
+        await videoRef.current.setStatusAsync({ positionMillis: targetPos });
+      }
+    } else {
+      setIsSeeking(true);
+      setSeekPosition(targetPos);
+    }
+  }, [playbackStatus, resetControlsTimer]);
+
   // ── Render Guards ─────────────────────────────────────────────────────────
 
   if (streamState.loading) {
@@ -532,12 +588,16 @@ export default function PlayerScreen({ route, navigation }) {
   const { downloading, isPaused, offlinePaused, progress, downloadedMB, totalMB, speedMB, eta, selectedQuality } = dlState;
   const { visible: showQualityModal, loading: qualitiesLoading, qualities, error: qualityError } = qualityState;
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render Calculations ──────────────────────────────────────────────────
   const isPlaying = playbackStatus && playbackStatus.isPlaying;
   const isBuffering = playbackStatus && playbackStatus.isBuffering;
-  const position = playbackStatus ? playbackStatus.positionMillis : 0;
+  const position = isSeeking ? seekPosition : (playbackStatus ? playbackStatus.positionMillis : 0);
   const duration = playbackStatus ? playbackStatus.durationMillis || 0 : 0;
   const progressPercent = duration > 0 ? (position / duration) * 100 : 0;
+
+  // Sizing definitions depending on landscape/portrait mode
+  const playBtnSizeStyle = isLandscape ? styles.hudPlayBtnLandscape : styles.hudPlayBtnPortrait;
+  const ctrlBtnSizeStyle = isLandscape ? styles.hudCtrlBtnLandscape : styles.hudCtrlBtnPortrait;
 
   return (
     <View style={[styles.container, isFullscreen && styles.containerFullscreen]}>
@@ -569,7 +629,9 @@ export default function PlayerScreen({ route, navigation }) {
               bufferForPlaybackMs: 1000,
               bufferForPlaybackAfterRebufferMs: 2000
             }}
-            onPlaybackStatusUpdate={(status) => setPlaybackStatus(status)}
+            onPlaybackStatusUpdate={(status) => {
+              if (!isSeeking) setPlaybackStatus(status);
+            }}
             onError={(err) => {
               console.error('[Player] video error:', err);
               dispatchStream({ type: 'ERROR', error: 'Playback failed. The session may have expired.' });
@@ -589,85 +651,109 @@ export default function PlayerScreen({ route, navigation }) {
               
               {/* Lock Mode active (Accidental touch protection) */}
               {isLocked ? (
-                <View style={styles.lockHUDWrapper}>
-                  <TouchableOpacity
-                    style={styles.lockIconBtn}
-                    onPress={() => {
-                      setIsLocked(false);
-                      resetControlsTimer();
-                    }}
-                  >
-                    <Ionicons name="lock-closed" size={28} color="#E50914" />
-                    <Text style={styles.lockText}>Tap to Unlock</Text>
-                  </TouchableOpacity>
+                <View style={styles.hudContainer}>
+                  {/* Top Bar showing only the Lock Button at the top-right */}
+                  <View style={[styles.hudTopBar, { justifyContent: 'flex-end' }]}>
+                    <TouchableOpacity
+                      style={styles.lockIconTopRight}
+                      onPress={() => {
+                        setIsLocked(false);
+                        resetControlsTimer();
+                      }}
+                    >
+                      <Ionicons name="lock-closed" size={22} color="#E50914" />
+                    </TouchableOpacity>
+                  </View>
+                 
                 </View>
               ) : (
                 <View style={styles.hudContainer}>
                   
-                  {/* Top Bar (Close/Back details) */}
-                  <View style={styles.hudTopBar}>
-                    <TouchableOpacity
-                      style={styles.hudBackBtn}
-                      onPress={() => {
-                        if (downloading) {
-                          Alert.alert('Active Download', 'Cancel the download and exit?', [
-                            { text: 'Stay', style: 'cancel' },
-                            { text: 'Cancel & Exit', style: 'destructive', onPress: () => { cancelDownload(); navigation.goBack(); } }
-                          ]);
-                        } else {
-                          navigation.goBack();
-                        }
-                      }}
-                    >
-                      <Ionicons name="chevron-back" size={26} color="#FFF" />
-                    </TouchableOpacity>
-                    <Text style={styles.hudTitle} numberOfLines={1}>
-                      {videoTitle}
-                    </Text>
-                  </View>
-
-                  {/* Center Controls (Seek backward, Play/Pause, Seek forward) */}
-                  <View style={styles.hudCenterControls}>
-                    <TouchableOpacity style={styles.hudControlBtn} onPress={() => seekDelta(-10000)}>
-                      <Ionicons name="play-back" size={32} color="#FFF" />
-                      <Text style={styles.seekText}>-10s</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={[styles.hudControlBtn, styles.hudPlayBtn]} onPress={togglePlay}>
-                      <Ionicons name={isPlaying ? "pause" : "play"} size={44} color="#FFF" />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.hudControlBtn} onPress={() => seekDelta(10000)}>
-                      <Ionicons name="play-forward" size={32} color="#FFF" />
-                      <Text style={styles.seekText}>+10s</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Bottom Controls Bar (Timeline progress, duration, Fullscreen & Lock) */}
-                  <View style={styles.hudBottomBar}>
-                    {/* Time progress indicators */}
-                    <Text style={styles.timeLabel}>{formatTime(position)}</Text>
-                    
-                    {/* Timeline progress track */}
-                    <View style={styles.hudTimelineTrack}>
-                      <View style={[styles.hudTimelineFill, { width: `${progressPercent}%` }]} />
+                  {/* Top Bar (Close/Back details + Lock button at top-right) */}
+                  <View style={[styles.hudTopBar, { justifyContent: 'space-between' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                      <TouchableOpacity
+                        style={styles.hudBackBtn}
+                        onPress={() => {
+                          if (downloading) {
+                            Alert.alert('Active Download', 'Cancel the download and exit?', [
+                              { text: 'Stay', style: 'cancel' },
+                              { text: 'Cancel & Exit', style: 'destructive', onPress: () => { cancelDownload(); navigation.goBack(); } }
+                            ]);
+                          } else {
+                            navigation.goBack();
+                          }
+                        }}
+                      >
+                        <Ionicons name="chevron-back" size={26} color="#FFF" />
+                      </TouchableOpacity>
+                      <Text style={styles.hudTitle} numberOfLines={1}>
+                        {videoTitle}
+                      </Text>
                     </View>
 
-                    <Text style={styles.timeLabel}>{formatTime(duration)}</Text>
-
-                    {/* Action buttons (Lock and Rotate/Fullscreen) */}
+                    {/* Lock Button at Top Right */}
                     <TouchableOpacity 
-                      style={styles.bottomActionBtn} 
+                      style={styles.lockIconTopRight} 
                       onPress={() => {
                         setIsLocked(true);
                         resetControlsTimer();
                       }}
                     >
-                      <Ionicons name="lock-open-outline" size={20} color="#FFF" />
+                      <Ionicons name="lock-open-outline" size={22} color="#FFF" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Center Controls (Seek backward, Play/Pause, Seek forward) */}
+                  <View style={styles.hudCenterControls}>
+                    <TouchableOpacity style={ctrlBtnSizeStyle} onPress={() => seekDelta(-10000)}>
+                      <Ionicons name="play-back" size={isLandscape ? 26 : 22} color="#FFF" />
+                      <Text style={styles.seekText}>-10s</Text>
                     </TouchableOpacity>
 
+                    <TouchableOpacity style={playBtnSizeStyle} onPress={togglePlay}>
+                      <Ionicons name={isPlaying ? "pause" : "play"} size={isLandscape ? 36 : 28} color="#FFF" />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={ctrlBtnSizeStyle} onPress={() => seekDelta(10000)}>
+                      <Ionicons name="play-forward" size={isLandscape ? 26 : 22} color="#FFF" />
+                      <Text style={styles.seekText}>+10s</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Bottom Controls Bar (Timeline progress, duration, Fullscreen & Rotate) */}
+                  <View style={styles.hudBottomBar}>
+                    {/* Time progress indicators */}
+                    <Text style={styles.timeLabel}>{formatTime(position)}</Text>
+                    
+                    {/* Draggable timeline touch hitbox wrapper */}
+                    <View 
+                      style={styles.hudTimelineContainer}
+                      onLayout={handleTrackLayout}
+                      onTouchStart={(e) => handleTouchSeek(e, false)}
+                      onTouchMove={(e) => handleTouchSeek(e, false)}
+                      onTouchEnd={(e) => handleTouchSeek(e, true)}
+                    >
+                      {/* Inner visual timeline progress track */}
+                      <View style={styles.hudTimelineTrack}>
+                        <View style={[styles.hudTimelineFill, { width: `${progressPercent}%` }]} />
+                        {/* Timeline scrub thumb handle */}
+                        <View 
+                          pointerEvents="none"
+                          style={[styles.hudTimelineThumb, { left: `${progressPercent}%` }]} 
+                        />
+                      </View>
+                    </View>
+
+                    <Text style={styles.timeLabel}>{formatTime(duration)}</Text>
+
+                    {/* Action buttons (Fullscreen & Rotate) */}
                     <TouchableOpacity style={styles.bottomActionBtn} onPress={toggleFullscreen}>
-                      <Ionicons name={isFullscreen ? "contract" : "expand"} size={20} color="#FFF" />
+                      <Ionicons name={isFullscreen ? "contract" : "expand"} size={18} color="#FFF" />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.bottomActionBtn} onPress={toggleRotate}>
+                      <MaterialIcons name="screen-rotation" size={18} color="#FFF" />
                     </TouchableOpacity>
                   </View>
 
@@ -879,6 +965,11 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     marginRight: 12,
   },
+  lockIconTopRight: {
+    padding: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 50,
+  },
   hudTitle: {
     color: '#FFF',
     fontSize: 16,
@@ -897,20 +988,47 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
   },
-  hudPlayBtn: {
+  hudPlayBtnPortrait: {
     backgroundColor: 'rgba(229, 9, 20, 0.85)',
-    borderRadius: 50,
-    width: 75,
-    height: 75,
+    borderRadius: 30,
+    width: 60,
+    height: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#E50914',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
     elevation: 5,
   },
+  hudPlayBtnLandscape: {
+    backgroundColor: 'rgba(229, 9, 20, 0.85)',
+    borderRadius: 26,
+    width: 52,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#E50914',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  hudCtrlBtnPortrait: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 48,
+    height: 48,
+  },
+  hudCtrlBtnLandscape: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 42,
+    height: 42,
+  },
   seekText: {
     color: '#FFF',
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: 'bold',
     marginTop: 2,
   },
@@ -925,17 +1043,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  hudTimelineTrack: {
+  hudTimelineContainer: {
     flex: 1,
+    paddingVertical: 12,
+    justifyContent: 'center',
+  },
+  hudTimelineTrack: {
     height: 4,
     backgroundColor: 'rgba(255,255,255,0.3)',
     borderRadius: 2,
-    overflow: 'hidden',
+    position: 'relative',
+    width: '100%',
   },
   hudTimelineFill: {
     height: '100%',
     backgroundColor: '#E50914',
     borderRadius: 2,
+  },
+  hudTimelineThumb: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#E50914',
+    top: -5,
+    marginLeft: -7,
+    shadowColor: '#E50914',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 3,
+    elevation: 3,
   },
   bottomActionBtn: {
     padding: 8,
