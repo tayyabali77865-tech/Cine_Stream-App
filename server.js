@@ -207,10 +207,15 @@ async function fetchFromNetmirrorWithRetry(endpoint) {
           timeout: 4000
         });
 
-        // Accept any response that is an object and contains data properties (since details, watchbox etc. may not have results/filters key)
-        if (res.data && typeof res.data === 'object' && Object.keys(res.data).length > 0) {
-          circuitBreaker.success();
-          return res.data;
+        // Validate response is a parsed JSON object (not HTML block page or string)
+        if (res.data && typeof res.data === 'object') {
+          // If it's an API list structure, ensure it contains results or system parameters
+          if (Object.keys(res.data).length > 0) {
+            circuitBreaker.success();
+            return res.data;
+          }
+        } else if (typeof res.data === 'string' && res.data.includes('<html')) {
+          throw new Error('Received HTML webpage block instead of API JSON payload.');
         }
 
         throw new Error('Invalid or empty response structure from NetMirror.');
