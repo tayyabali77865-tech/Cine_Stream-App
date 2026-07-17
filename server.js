@@ -333,8 +333,10 @@ app.get('/api/search', async (req, res) => {
     const formattedQuery = encodeURIComponent(decodedQuery.trim()).replace(/%20/g, '+');
     const endpoint = `/search2/${formattedQuery}?page=${page}`;
 
-    // ✅ Use searchCache — same query returned instantly on 2nd hit
-    const { value: data, status } = await searchCache.get(endpoint);
+    // ✅ Use searchCache safely by retrieving wrapper value property explicitly
+    const cacheRes = await searchCache.get(endpoint);
+    const data = cacheRes ? cacheRes.value : null;
+    const status = cacheRes ? cacheRes.status : 'MISS';
     const results = (data && data.results) ? data.results : [];
 
     // isDeleted is now async — filter with Promise.all
