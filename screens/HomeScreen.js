@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { apiService } from '../services/apiService';
+import { Ionicons } from '@expo/vector-icons';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -535,13 +536,6 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.logoCine}>Cine</Text>
           <Text style={styles.logoStream}>Stream</Text>
         </View>
-        <TouchableOpacity
-          style={styles.menuIconBtn}
-          activeOpacity={0.7}
-          onPress={openSidebar}
-        >
-          <Text style={styles.menuIconText}>☰</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Search Input Bar with Cross Clear Icon */}
@@ -637,7 +631,7 @@ export default function HomeScreen({ navigation }) {
           renderItem={renderCard}
           keyExtractor={item => item.id}
           numColumns={2}
-          contentContainerStyle={styles.listContainer}
+          contentContainerStyle={[styles.listContainer, { paddingBottom: 85 }]}
           columnWrapperStyle={styles.columnWrapper}
           removeClippedSubviews={false}
           maxToRenderPerBatch={6}
@@ -652,40 +646,35 @@ export default function HomeScreen({ navigation }) {
         />
       )}
 
-      {/* Sidebar Navigation Drawer Overlay */}
-      {showSidebar && (
-        <View style={styles.sidebarOverlay}>
-          <TouchableOpacity
-            style={styles.sidebarBackdrop}
-            activeOpacity={1}
-            onPress={closeSidebar}
-          />
-          <Animated.View style={[styles.sidebarContent, { transform: [{ translateX: slideAnim }] }]}>
-            <View style={styles.sidebarHeader}>
-              <Text style={styles.sidebarTitle}>Menu</Text>
-              <TouchableOpacity onPress={closeSidebar} style={styles.closeSidebarBtn}>
-                <Text style={styles.closeSidebarText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            {CATEGORY_LIST.map((cat) => {
-              const isSelected = activeCategory === cat;
-              return (
-                <TouchableOpacity
-                  key={cat}
-                  style={[styles.sidebarOption, isSelected && styles.sidebarOptionActive]}
-                  onPress={() => selectCategory(cat)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.sidebarOptionText, isSelected && styles.sidebarOptionTextActive]}>
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </Animated.View>
-        </View>
-      )}
+      {/* Bottom Footer Tab Navigation Bar */}
+      <View style={styles.footerTabBar}>
+        {[
+          { key: 'All', label: 'Home', iconNameActive: 'home', iconNameInactive: 'home-outline' },
+          { key: 'Movies', label: 'Movie', iconNameActive: 'film', iconNameInactive: 'film-outline' },
+          { key: 'Series', label: 'Tv Show', iconNameActive: 'tv', iconNameInactive: 'tv-outline' },
+          { key: 'Anime', label: 'Anime', iconNameActive: 'sparkles', iconNameInactive: 'sparkles-outline' }
+        ].map((item) => {
+          const isSelected = activeCategory === item.key;
+          const currentIcon = isSelected ? item.iconNameActive : item.iconNameInactive;
+          return (
+            <TouchableOpacity
+              key={item.key}
+              style={[styles.footerTabButton, isSelected && styles.footerTabButtonActive]}
+              activeOpacity={0.8}
+              onPress={() => selectCategory(item.key)}
+            >
+              <Ionicons 
+                name={currentIcon} 
+                size={22} 
+                color={isSelected ? '#E50914' : '#9CA3AF'} 
+              />
+              <Text style={[styles.footerTabText, isSelected && styles.footerTabTextActive]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -699,10 +688,10 @@ const styles = StyleSheet.create({
   },
   appHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     marginTop: StatusBar.currentHeight || 0,
     backgroundColor: '#0F0F14',
     borderBottomWidth: 1,
@@ -723,75 +712,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
     letterSpacing: 0.5,
-  },
-  menuIconBtn: {
-    padding: 8,
-  },
-  menuIconText: {
-    color: '#FFF',
-    fontSize: 24,
-  },
-  sidebarOverlay: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    zIndex: 999,
-    flexDirection: 'row',
-  },
-  sidebarBackdrop: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  sidebarContent: {
-    width: 250,
-    backgroundColor: '#0F0F14',
-    paddingTop: 50,
-    paddingHorizontal: 20,
-    borderLeftWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  sidebarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 30,
-    borderBottomWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    paddingBottom: 12,
-  },
-  sidebarTitle: {
-    color: '#FFF',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  closeSidebarBtn: {
-    padding: 4,
-  },
-  closeSidebarText: {
-    color: '#9CA3AF',
-    fontSize: 18,
-  },
-  sidebarOption: {
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  sidebarOptionActive: {
-    backgroundColor: 'rgba(229, 9, 20, 0.15)',
-    borderLeftWidth: 3,
-    borderColor: '#E50914',
-  },
-  sidebarOptionText: {
-    color: '#9CA3AF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  sidebarOptionTextActive: {
-    color: '#FFF',
-    fontWeight: 'bold',
   },
   searchContainer: {
     paddingHorizontal: 16,
@@ -841,7 +761,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: 'rgba(229, 9, 20, 0.1)',
+    backgroundColor: 'rgba(229, 9, 20, 0.15)',
     borderWidth: 1,
     borderColor: 'rgba(229, 9, 20, 0.3)',
   },
@@ -880,7 +800,6 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     paddingHorizontal: 8,
-    paddingBottom: 24,
   },
   columnWrapper: {
     justifyContent: 'space-between',
@@ -991,5 +910,40 @@ const styles = StyleSheet.create({
   },
   footerIndicator: {
     marginVertical: 16,
+  },
+  footerTabBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 70,
+    backgroundColor: '#0F0F14',
+    borderTopWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingBottom: 5,
+    elevation: 10,
+  },
+  footerTabButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    height: '100%',
+  },
+  footerTabButtonActive: {
+    borderTopWidth: 2,
+    borderColor: '#E50914',
+  },
+  footerTabText: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  footerTabTextActive: {
+    color: '#E50914',
+    fontWeight: 'bold',
   },
 });

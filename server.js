@@ -7,7 +7,6 @@ const crypto = require('crypto');
 const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
-const fs = require('fs');
 const path = require('path');
 const {
   DynamicMirrorManager,
@@ -15,30 +14,7 @@ const {
   RequestDeduplicator,
   LRUCacheWithSWR
 } = require('./services/cacheService');
-
-// Local Data Store for Deletions and Custom Play URLs
-const DB_FILE = path.join(__dirname, 'admin_db.json');
-let adminDb = { deletedIds: [], customOverrides: {} };
-
-function loadDb() {
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      adminDb = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-    }
-  } catch (err) {
-    console.error('Error reading admin_db.json database:', err.message);
-  }
-}
-
-function saveDb() {
-  try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(adminDb, null, 2), 'utf8');
-  } catch (err) {
-    console.error('Error writing admin_db.json database:', err.message);
-  }
-}
-
-loadDb();
+const db = require('./services/mongoService');
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -76,6 +52,27 @@ const detailsCache = new LRUCacheWithSWR({
   swrMs: parseInt(process.env.CACHE_DETAILS_SWR_MS || '900000'),
   fetchFn: async (key) => {
     return fetchFromNetmirrorWithRetry(key);
+  }
+});
+
+// ─── Search Cache ─────────────────────────────────────────────────────────────
+const searchCache = new LRUCacheWithSWR({
+  capacity: parseInt(process.env.CACHE_SEARCH_CAPACITY || '100'),
+  ttlMs: parseInt(process.env.CACHE_SEARCH_TTL_MS || '120000'),
+  swrMs: parseInt(process.env.CACHE_SEARCH_SWR_MS || '300000'),
+  fetchFn: async (key) => {
+    return fetchFromNetmirrorWithRetry(key);
+  }
+});
+
+// ─── Stream Cache ─────────────────────────────────────────────────────────────
+const streamCache = new LRUCacheWithSWR({
+  capacity: parseInt(process.env.CACHE_STREAM_CAPACITY || '50'),
+  ttlMs: parseInt(process.env.CACHE_STREAM_TTL_MS || '600000'),
+  swrMs: parseInt(process.env.CACHE_STREAM_SWR_MS || '300000'),
+  fetchFn: async (key) => {
+    // Stream cache ke liye fetchFn use nahi hoti — manually set karte hain
+    return null;
   }
 });
 
@@ -182,14 +179,8 @@ const getHeaders = (referer = REFERER_URL) => ({
   'Upgrade-Insecure-Requests': '1'
 });
 
-function isDeleted(id) {
-  const idStr = String(id);
-  return adminDb.deletedIds.some(item => {
-    if (typeof item === 'object' && item !== null) {
-      return item.id === idStr;
-    }
-    return String(item) === idStr;
-  });
+async function isDeleted(id) {
+  return db.isDeleted(id);
 }
 
 /**
@@ -265,19 +256,22 @@ app.get('/api/trending', async (req, res) => {
       const endpoint = `/movies/filter?sort_by=date&country=Japan&items_per_page=30&page=${page}`;
       const { value: data, status } = await catalogCache.get(endpoint);
       const results = data.results || [];
-      const mediaList = results
-        .filter(item => !isDeleted(item.id))
-        .map(item => ({
-          id: item.id,
-          title: item.title ? item.title.trim() : 'Unknown Title',
-          poster: item.backdrop_path || 'https://placehold.co/300x450',
-          type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
-          releaseDate: item.release_date || 'N/A',
-          country: item.cn || '',
-          channel: item.channel || '',
-          rating: parseFloat(item.vote_average) || 0,
-          isCustom: !!adminDb.customOverrides[String(item.id)]
-        }));
+
+      // isDeleted + isCustom are async — resolve both with Promise.all
+      const deletedFlags  = await Promise.all(results.map(item => isDeleted(item.id)));
+      const customFlags   = await Promise.all(results.map(item => db.getOverride(String(item.id))));
+      const filteredAnime = results.filter((_, i) => !deletedFlags[i]);
+      const mediaList = filteredAnime.map((item, i) => ({
+        id: item.id,
+        title: item.title ? item.title.trim() : 'Unknown Title',
+        poster: item.backdrop_path || 'https://placehold.co/300x450',
+        type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
+        releaseDate: item.release_date || 'N/A',
+        country: item.cn || '',
+        channel: item.channel || '',
+        rating: parseFloat(item.vote_average) || 0,
+        isCustom: !!(customFlags[results.indexOf(item)])
+      }));
 
       res.setHeader('X-Cache-Status', status);
       return res.json(mediaList);
@@ -293,19 +287,21 @@ app.get('/api/trending', async (req, res) => {
     const { value: data, status } = await catalogCache.get(endpoint);
     const results = data.results || [];
 
-    const mediaList = results
-      .filter(item => !isDeleted(item.id))
-      .map(item => ({
-        id: item.id,
-        title: item.title ? item.title.trim() : 'Unknown Title',
-        poster: item.backdrop_path || 'https://placehold.co/300x450',
-        type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
-        releaseDate: item.release_date || 'N/A',
-        country: item.cn || '',
-        channel: item.channel || '',
-        rating: parseFloat(item.vote_average) || 0,
-        isCustom: !!adminDb.customOverrides[String(item.id)]
-      }));
+    // isDeleted + isCustom are async — resolve both with Promise.all
+    const deletedFlags   = await Promise.all(results.map(item => isDeleted(item.id)));
+    const customFlags    = await Promise.all(results.map(item => db.getOverride(String(item.id))));
+    const filteredItems  = results.filter((_, i) => !deletedFlags[i]);
+    const mediaList = filteredItems.map((item) => ({
+      id: item.id,
+      title: item.title ? item.title.trim() : 'Unknown Title',
+      poster: item.backdrop_path || 'https://placehold.co/300x450',
+      type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
+      releaseDate: item.release_date || 'N/A',
+      country: item.cn || '',
+      channel: item.channel || '',
+      rating: parseFloat(item.vote_average) || 0,
+      isCustom: !!(customFlags[results.indexOf(item)])
+    }));
 
     res.setHeader('X-Cache-Status', status);
     res.json(mediaList);
@@ -316,7 +312,7 @@ app.get('/api/trending', async (req, res) => {
 });
 
 /**
- * 2. Search Media (Not cached as searches are dynamic and unique, but using the resilient fetcher)
+ * 2. Search Media — cached with searchCache (2 min TTL, 5 min SWR)
  */
 app.get('/api/search', async (req, res) => {
   const query = req.query.q;
@@ -326,11 +322,15 @@ app.get('/api/search', async (req, res) => {
   try {
     const formattedQuery = encodeURIComponent(query.trim()).replace(/%20/g, '+');
     const endpoint = `/search2/${formattedQuery}?page=${page}`;
-    const data = await fetchFromNetmirrorWithRetry(endpoint);
-    const results = data.results || [];
 
+    // ✅ Use searchCache — same query returned instantly on 2nd hit
+    const { value: data, status } = await searchCache.get(endpoint);
+    const results = (data && data.results) ? data.results : [];
+
+    // isDeleted is now async — filter with Promise.all
+    const deletedFlags = await Promise.all(results.map(item => isDeleted(item.id)));
     const mediaList = results
-      .filter(item => !isDeleted(item.id))
+      .filter((_, i) => !deletedFlags[i])
       .map(item => ({
         id: item.id,
         title: item.title ? item.title.trim() : 'Unknown Title',
@@ -339,10 +339,10 @@ app.get('/api/search', async (req, res) => {
         releaseDate: item.release_date || 'N/A',
         country: item.cn || '',
         channel: item.channel || '',
-        rating: parseFloat(item.vote_average) || 0,
-        isCustom: !!adminDb.customOverrides[String(item.id)]
+        rating: parseFloat(item.vote_average) || 0
       }));
 
+    res.setHeader('X-Cache-Status', status);
     res.json(mediaList);
   } catch (error) {
     console.error('Error searching:', error.message);
@@ -405,8 +405,18 @@ app.get('/api/stream/:id', async (req, res) => {
   const lang = req.query.lang || 'Hindi';
 
   try {
+    const cacheKey = `${id}:${se}:${ep}:${lang}`;
+
+    // ✅ Check streamCache first — avoid re-resolving for same stream
+    const cachedEntry = streamCache.cache.get(cacheKey);
+    if (cachedEntry && (Date.now() - cachedEntry.fetchedAt) < parseInt(process.env.CACHE_STREAM_TTL_MS || '600000')) {
+      console.log(`⚡ [StreamCache] HIT for key: ${cacheKey}`);
+      res.setHeader('X-Cache-Status', 'HIT');
+      return res.json(cachedEntry.value);
+    }
+
     // A. Intercept if user has custom overridden URLs
-    const customLinks = adminDb.customOverrides[String(id)];
+    const customLinks = await db.getOverride(String(id));
     if (customLinks && customLinks.length > 0) {
       console.log(`🎯 Serving custom URL overrides config for ID: ${id}`);
       return res.json({
@@ -606,13 +616,18 @@ app.get('/api/stream/:id', async (req, res) => {
       throw new Error('Failed to resolve stream link on any host provider.');
     }
 
-    console.log(`🔥 Resolved final streaming file: ${resolvedVideoUrl}`);
-    res.json({
+    const streamResult = {
       videoUrl: resolvedVideoUrl,
       qualities: resolvedQualities,
       audioUrl: null,
       referer: REFERER_URL
-    });
+    };
+
+    // ✅ Cache the resolved stream to avoid re-resolving for 10 minutes
+    streamCache.set(cacheKey, streamResult);
+    console.log(`🔥 Resolved final streaming file: ${resolvedVideoUrl}`);
+    res.setHeader('X-Cache-Status', 'MISS');
+    res.json(streamResult);
   } catch (error) {
     console.error(`Error resolving stream for ID ${id}:`, error.message);
     res.status(500).json({ error: 'Failed to resolve streaming file.' });
@@ -633,7 +648,7 @@ app.get('/api/download-qualities/:id', async (req, res) => {
 
   try {
     // A. Intercept if user has custom overridden download URLs
-    const customLinks = adminDb.customOverrides[String(id)];
+    const customLinks = await db.getOverride(String(id));
     if (customLinks && customLinks.length > 0) {
       console.log(`🎯 Serving custom download qualities override for ID: ${id}`);
       return res.json({ qualities: customLinks, referer: '' });
@@ -1015,56 +1030,39 @@ app.get(['/', '/admin'], (req, res) => {
 });
 
 // CRUD Endpoint: DELETE Media Item (Removal)
-app.delete('/api/media/:id', (req, res) => {
+app.delete('/api/media/:id', async (req, res) => {
   const { id } = req.params;
   const title = req.query.title || 'Unknown Title';
   if (!id) return res.status(400).json({ error: 'Missing ID parameter' });
 
-  const idStr = String(id);
-  
-  // Track details of deleted items in database so we can list & restore them
-  const isAlreadyDeleted = adminDb.deletedIds.some(item => typeof item === 'object' ? item.id === idStr : item === idStr);
-  if (!isAlreadyDeleted) {
-    adminDb.deletedIds.push({ id: idStr, title, deletedAt: new Date().toISOString() });
-    saveDb();
-  }
+  await db.addDeleted(id, title);
   res.json({ success: true, message: `Media ${id} successfully removed from frontend list.` });
 });
 
 // CRUD Endpoint: GET List of Deleted Items
-app.get('/api/deleted-list', (req, res) => {
-  // Normalize old deleted ID strings to objects
-  const list = adminDb.deletedIds.map(item => {
-    if (typeof item === 'object') return item;
-    return { id: String(item), title: 'Deleted Media Item (ID: ' + item + ')', deletedAt: 'N/A' };
-  });
+app.get('/api/deleted-list', async (req, res) => {
+  const list = await db.getAllDeleted();
   res.json(list);
 });
 
 // CRUD Endpoint: POST Restore Media Item (Removal Undo)
-app.post('/api/media-restore/:id', (req, res) => {
+app.post('/api/media-restore/:id', async (req, res) => {
   const { id } = req.params;
   if (!id) return res.status(400).json({ error: 'Missing ID parameter' });
 
-  const idStr = String(id);
-  adminDb.deletedIds = adminDb.deletedIds.filter(item => {
-    if (typeof item === 'object') return item.id !== idStr;
-    return String(item) !== idStr;
-  });
-  saveDb();
-
+  await db.removeDeleted(id);
   res.json({ success: true, message: `Media ${id} successfully restored.` });
 });
 
 // CRUD Endpoint: GET Custom URL Overrides for target media
-app.get('/api/media-custom/:id', (req, res) => {
+app.get('/api/media-custom/:id', async (req, res) => {
   const { id } = req.params;
-  const customLinks = adminDb.customOverrides[String(id)] || [];
+  const customLinks = (await db.getOverride(String(id))) || [];
   res.json({ id, customLinks });
 });
 
 // CRUD Endpoint: POST Custom URL Overrides
-app.post('/api/media-custom/:id', (req, res) => {
+app.post('/api/media-custom/:id', async (req, res) => {
   const { id } = req.params;
   const { customLinks } = req.body;
 
@@ -1072,13 +1070,11 @@ app.post('/api/media-custom/:id', (req, res) => {
     return res.status(400).json({ error: 'Invalid input payload parameters' });
   }
 
-  const idStr = String(id);
   if (customLinks.length === 0) {
-    delete adminDb.customOverrides[idStr];
+    await db.deleteOverride(id);
   } else {
-    adminDb.customOverrides[idStr] = customLinks;
+    await db.setOverride(id, customLinks);
   }
-  saveDb();
 
   res.json({ success: true, message: `Custom links saved for Media ID ${id}.` });
 });
@@ -1095,9 +1091,12 @@ app.get('/api/health', async (req, res) => {
     uptime: `${uptime}s`,
     activeMirror,
     allMirrors,
+    mongodb: db.getStatus(),
     circuitBreaker: circuitBreaker.getState(),
     catalogCache: catalogCache.getMetrics(),
     detailsCache: detailsCache.getMetrics(),
+    searchCache: searchCache.getMetrics(),
+    streamCache: streamCache.getMetrics(),
     memory: {
       heapUsed: `${(memory.heapUsed / 1024 / 1024).toFixed(2)} MB`,
       rss: `${(memory.rss / 1024 / 1024).toFixed(2)} MB`
@@ -1109,11 +1108,15 @@ app.get('/api/health', async (req, res) => {
 setInterval(() => {
   catalogCache.cleanupExpired();
   detailsCache.cleanupExpired();
+  searchCache.cleanupExpired();
 }, 60000);
 
 // Server Listen
 app.listen(PORT, '0.0.0.0', async () => {
   console.log(`\n🚀 Production Scraper Server active on http://0.0.0.0:${PORT}/api`);
+
+  // Connect to MongoDB Atlas
+  await db.connectMongo();
 
   // Start Mirror discovery
   await mirrorManager.start();

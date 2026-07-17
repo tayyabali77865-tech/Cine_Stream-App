@@ -5,13 +5,10 @@
     "owner": "tayyabali77865",
     "version": "1.0.0",
     "orientation": "portrait",
-
     "icon": "./assets/icon.png",
-
     "assetBundlePatterns": [
       "assets/**"
     ],
-
     "plugins": [
       "expo-asset",
       [
@@ -23,7 +20,6 @@
         }
       ]
     ],
-
     "android": {
       "package": "com.cinestream.tayyabali77865",
       "newArchEnabled": true,
@@ -31,12 +27,22 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#000000"
-      }
+      },
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_MEDIA_LOCATION"
+      ]
     },
-
     "extra": {
       "eas": {
         "projectId": "1a99f29d-aeac-4689-a694-afb2351a6083"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.cinestream.tayyabali77865",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
       }
     }
   }
