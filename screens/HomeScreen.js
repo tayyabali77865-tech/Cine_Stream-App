@@ -152,6 +152,9 @@ function applyClientSideFilter(list, filterName, categoryName) {
     });
   }
 
+  return filtered;
+}
+
 /**
  * Clean title helper to strip bracket metadata like [Hindi], (Dubbed)
  * and normalize string format for accurate fuzzy calculations.
