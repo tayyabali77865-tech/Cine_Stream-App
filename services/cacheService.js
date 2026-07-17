@@ -89,9 +89,9 @@ class DynamicMirrorManager {
           timeout: 4000
         });
 
-        // Simply check if response exists and has a results property array
-        if (!searchRes.data || !Array.isArray(searchRes.data.results)) {
-          throw new Error('Invalid search response format.');
+        // Simply check if response exists and has a results property array (ensure it returns actual results)
+        if (!searchRes.data || !Array.isArray(searchRes.data.results) || searchRes.data.results.length === 0) {
+          throw new Error('Invalid search response format or returned empty results.');
         }
 
         const latency = Date.now() - start;
