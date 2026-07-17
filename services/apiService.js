@@ -120,7 +120,7 @@ const checkHealth = async (baseUrl) => {
   try {
     const res = await Promise.race([
       fetch(`${baseUrl}/health`),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000)) // 10 seconds timeout
     ]);
     if (res.ok) return true;
     markUrlFailed(baseUrl);
@@ -136,7 +136,6 @@ async function customFetch(endpoint, options = {}) {
   const decodedEndpoint = decodeURIComponent(endpoint.replace(/\+/g, ' '));
   const dataToSign = `/api${decodedEndpoint}${timestamp}`;
   const signature = CryptoJS.HmacSHA256(dataToSign, secretKey).toString(CryptoJS.enc.Hex);
-
 
   const headers = {
     ...(options.headers || {}),
@@ -160,7 +159,14 @@ async function customFetch(endpoint, options = {}) {
   }
 
   // 2. Scan all fallbacks concurrently (skip ones on cooldown)
-  const candidateUrls = API_FALLBACKS.filter(url => url !== activeBaseUrl && !isUrlOnCooldown(url));
+  let candidateUrls = API_FALLBACKS.filter(url => url !== activeBaseUrl && !isUrlOnCooldown(url));
+
+  // Safety Bypass: If ALL URLs are on cooldown, clear cooldowns and check them again
+  if (candidateUrls.length === 0) {
+    console.log('🔄 All servers on cooldown. Resetting cooldowns for retry.');
+    failedUrlCooldown.clear();
+    candidateUrls = API_FALLBACKS;
+  }
 
   if (candidateUrls.length > 0) {
     const scanPromises = candidateUrls.map(async (url) => {
