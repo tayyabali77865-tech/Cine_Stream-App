@@ -152,42 +152,49 @@ function applyClientSideFilter(list, filterName, categoryName) {
     });
   }
 
-  return filtered;
+/**
+ * Clean title helper to strip bracket metadata like [Hindi], (Dubbed)
+ * and normalize string format for accurate fuzzy calculations.
+ */
+function cleanTitleForMatching(title) {
+  if (!title) return '';
+  return title.toLowerCase()
+              .replace(/\[.*?\]/g, '') // Remove brackets [Hindi], [English]
+              .replace(/\(.*?\)/g, '') // Remove parentheses (Dubbed)
+              .replace(/[^a-z0-9\s]/g, '') // Strip special characters
+              .replace(/\s+/g, ' ') // Normalize spaces
+              .trim();
 }
 
 /**
- * Sorensen-Dice Coefficient based string similarity helper.
- * Returns score between 0.0 (no similarity) and 1.0 (exact match).
+ * Weighted priority matching utility.
+ * Returns score between 0 and 100+ based on similarity & exact matching.
  */
-function getStringSimilarity(str1, str2) {
-  if (!str1 || !str2) return 0;
-  const s1 = str1.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-  const s2 = str2.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+function getStringSimilarity(title, query) {
+  if (!title || !query) return 0;
+  const t = cleanTitleForMatching(title);
+  const q = cleanTitleForMatching(query);
 
-  if (s1 === s2) return 1.0; // 100% exact match
-  if (s1.includes(s2) || s2.includes(s1)) {
-    // High base rate for substring match, scaled by length difference
-    return 0.90 + (Math.min(s1.length, s2.length) / Math.max(s1.length, s2.length)) * 0.09;
+  if (t === q) return 100.0; // 100% Exact match (excluding metadata brackets)
+  
+  if (t.startsWith(q)) {
+    // High priority for starts-with (e.g. "Naruto" in "Naruto: Shippuden")
+    return 50.0 + (q.length / t.length) * 10.0;
+  }
+  
+  if (t.includes(q)) {
+    // Medium priority for substring match
+    return 10.0 + (q.length / t.length) * 5.0;
   }
 
-  const getBigrams = (str) => {
-    const bigrams = new Set();
-    for (let i = 0; i < str.length - 1; i++) {
-      bigrams.add(str.substring(i, i + 2));
-    }
-    return bigrams;
-  };
-
-  const b1 = getBigrams(s1);
-  const b2 = getBigrams(s2);
-  if (b1.size === 0 || b2.size === 0) return 0.0;
-
-  let intersection = 0;
-  for (const item of b1) {
-    if (b2.has(item)) intersection++;
-  }
-
-  return (2.0 * intersection) / (b1.size + b2.size);
+  // Fallback to token (word) intersection matching
+  const tWords = t.split(' ');
+  const qWords = q.split(' ');
+  let matches = 0;
+  qWords.forEach(qw => {
+    if (tWords.includes(qw)) matches++;
+  });
+  return matches / Math.max(tWords.length, qWords.length);
 }
 
 function sortMediaList(list, isSearchActive, queryOrFilter) {
