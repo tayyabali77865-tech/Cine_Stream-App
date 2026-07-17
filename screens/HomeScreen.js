@@ -155,10 +155,57 @@ function applyClientSideFilter(list, filterName, categoryName) {
   return filtered;
 }
 
-function sortMediaList(list, isSearchActive, activeFilter) {
-  if (isSearchActive) {
-    return list; // Preserve original search results relevance order from API
+/**
+ * Sorensen-Dice Coefficient based string similarity helper.
+ * Returns score between 0.0 (no similarity) and 1.0 (exact match).
+ */
+function getStringSimilarity(str1, str2) {
+  if (!str1 || !str2) return 0;
+  const s1 = str1.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+  const s2 = str2.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+
+  if (s1 === s2) return 1.0; // 100% exact match
+  if (s1.includes(s2) || s2.includes(s1)) {
+    // High base rate for substring match, scaled by length difference
+    return 0.90 + (Math.min(s1.length, s2.length) / Math.max(s1.length, s2.length)) * 0.09;
   }
+
+  const getBigrams = (str) => {
+    const bigrams = new Set();
+    for (let i = 0; i < str.length - 1; i++) {
+      bigrams.add(str.substring(i, i + 2));
+    }
+    return bigrams;
+  };
+
+  const b1 = getBigrams(s1);
+  const b2 = getBigrams(s2);
+  if (b1.size === 0 || b2.size === 0) return 0.0;
+
+  let intersection = 0;
+  for (const item of b1) {
+    if (b2.has(item)) intersection++;
+  }
+
+  return (2.0 * intersection) / (b1.size + b2.size);
+}
+
+function sortMediaList(list, isSearchActive, queryOrFilter) {
+  if (isSearchActive && queryOrFilter) {
+    return [...list].sort((a, b) => {
+      const simA = getStringSimilarity(a.title, queryOrFilter);
+      const simB = getStringSimilarity(b.title, queryOrFilter);
+      
+      // Descending order of similarity (100% match, then 99%, then 98% etc.)
+      if (simB !== simA) return simB - simA;
+      
+      // Fallback to rating if similarity is exactly equal
+      const ratingA = parseFloat(a.rating) || 0;
+      const ratingB = parseFloat(b.rating) || 0;
+      return ratingB - ratingA;
+    });
+  }
+
   return [...list].sort((a, b) => {
     // Always sort by rating first (highest first)
     const ratingA = parseFloat(a.rating) || 0;
@@ -392,7 +439,7 @@ export default function HomeScreen({ navigation }) {
       loadingRef.current = true;
       setHasMore(true);
       const data = await apiService.searchMedia(trimmed, 0);
-      setMediaList(sortMediaList(makeUnique(data), true, activeFilter));
+      setMediaList(sortMediaList(makeUnique(data), true, trimmed));
       setPage(0);
     } catch (e) {
       console.error(e);
@@ -435,7 +482,7 @@ export default function HomeScreen({ navigation }) {
       if (data.length === 0) {
         setHasMore(false);
       } else {
-        const sortedNewBatch = sortMediaList(data, true, activeFilter);
+        const sortedNewBatch = sortMediaList(data, true, query);
         setMediaList(prev => makeUnique([...prev, ...sortedNewBatch]));
         setPage(targetPage);
       }
