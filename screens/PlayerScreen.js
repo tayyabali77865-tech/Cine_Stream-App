@@ -413,15 +413,21 @@ export default function PlayerScreen({ route, navigation }) {
     lastTs.current = Date.now();
     lastBytes.current = 0;
 
-    const referer = qualityState.referer || 'https://netmirror.global/';
+    const referer = qualityState.referer;
+    const downloadHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    };
+    if (referer && referer.trim() !== '') {
+      downloadHeaders['Referer'] = referer;
+    } else if (referer === undefined) {
+      downloadHeaders['Referer'] = 'https://netmirror.global/';
+    }
+
     downloadRef.current = FileSystem.createDownloadResumable(
       quality.url,
       fileUri,
       {
-        headers: {
-          Referer: referer,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        }
+        headers: downloadHeaders
       },
       makeCallback(estBytes)
     );
