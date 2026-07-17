@@ -10,8 +10,17 @@ import {
   Dimensions,
   StatusBar,
   ScrollView,
-  Animated
+  Animated,
+  LayoutAnimation,
+  UIManager,
+  Platform
 } from 'react-native';
+
+if (Platform.OS === 'android') {
+  if (UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+}
 import { Image as ExpoImage } from 'expo-image';
 import { apiService } from '../services/apiService';
 import { Ionicons } from '@expo/vector-icons';
@@ -63,6 +72,32 @@ function detectLanguage(title) {
     if (titleLower.includes(lang.toLowerCase())) return lang;
   }
   return 'Original';
+}
+
+function getDisplayBadge(item, activeCategory) {
+  const countryLower = (item.country || '').toLowerCase();
+  const channelLower = (item.channel || '').toLowerCase();
+  const titleLower = (item.title || '').toLowerCase();
+  
+  if (
+    activeCategory === 'Anime' ||
+    countryLower === 'japan' ||
+    channelLower.includes('anime') ||
+    titleLower.includes('anime') ||
+    titleLower.includes('naruto') ||
+    titleLower.includes('boruto') ||
+    titleLower.includes('jujutsu') ||
+    titleLower.includes('one piece') ||
+    titleLower.includes('demon slayer')
+  ) {
+    return 'Anime';
+  }
+  
+  const typeLower = (item.type || '').toLowerCase();
+  if (typeLower === 'tv show' || typeLower === 'tv' || typeLower === 'series') {
+    return 'TV Show';
+  }
+  return 'Movie';
 }
 
 function makeUnique(list) {
@@ -403,26 +438,51 @@ export default function HomeScreen({ navigation }) {
         setHasMore(true);
       }
 
-      const rawData = await apiService.getTrendingMedia(targetPage, currentFilter, currentCategory);
-      const filteredData = applyClientSideFilter(rawData, currentFilter, currentCategory);
+      let currentPage = targetPage;
+      let accumulatedData = [];
+      const targetCount = isLoadMore ? 10 : 20;
+      const maxPages = currentCategory === 'Anime' ? 30 : 20;
 
-      if (rawData.length === 0) {
-        setHasMore(false);
-      } else {
-        const maxPages = currentCategory === 'Anime' ? 12 : 5;
-        if (filteredData.length === 0 && rawData.length > 0 && targetPage < maxPages) {
-          await new Promise(resolve => setTimeout(resolve, 800));
-          await loadTrendingData(targetPage + 1, isLoadMore, currentFilter, currentCategory);
-          return;
+      while (accumulatedData.length < targetCount && currentPage <= maxPages) {
+        const rawData = await apiService.getTrendingMedia(currentPage, currentFilter, currentCategory);
+        if (rawData.length === 0) {
+          setHasMore(false);
+          break;
         }
-        if (targetPage === 0) {
-          setMediaList(sortMediaList(makeUnique(filteredData), false, currentFilter));
-        } else {
-          const sortedNewBatch = sortMediaList(filteredData, false, currentFilter);
-          setMediaList(prev => makeUnique([...prev, ...sortedNewBatch]));
+
+        const filteredData = applyClientSideFilter(rawData, currentFilter, currentCategory);
+        
+        // Deduplicate with existing list and accumulated batch
+        const existingIds = new Set(isLoadMore ? mediaList.map(item => item.id) : []);
+        const newUniqueItems = filteredData.filter(
+          item => !existingIds.has(item.id) && !accumulatedData.some(a => a.id === item.id)
+        );
+
+        accumulatedData = [...accumulatedData, ...newUniqueItems];
+
+        if (rawData.length < 30) {
+          setHasMore(false);
+          break;
         }
-        setPage(targetPage);
+
+        if (accumulatedData.length >= targetCount) {
+          break;
+        }
+
+        currentPage++;
       }
+
+      if (accumulatedData.length === 0 && targetPage === 0) {
+        setHasMore(false);
+      }
+
+      if (targetPage === 0 && !isLoadMore) {
+        setMediaList(sortMediaList(makeUnique(accumulatedData), false, currentFilter));
+      } else {
+        const sortedNewBatch = sortMediaList(accumulatedData, false, currentFilter);
+        setMediaList(prev => makeUnique([...prev, ...sortedNewBatch]));
+      }
+      setPage(currentPage);
     } catch (e) {
       console.error(e);
       if (!isLoadMore) setIsOffline(true);
@@ -432,10 +492,7 @@ export default function HomeScreen({ navigation }) {
       setLoadingMore(false);
       loadingMoreRef.current = false;
     }
-    // loadingMore and hasMore are intentionally not in deps — they are read as
-    // guard flags at the top; stale closure is fine here (acts like a snapshot guard).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilter, activeCategory, hasMore]);
+  }, [activeFilter, activeCategory, hasMore, mediaList]);
 
   // ─── Search ───────────────────────────────────────────────────────────────
 
@@ -494,13 +551,44 @@ export default function HomeScreen({ navigation }) {
     try {
       setLoadingMore(true);
       loadingMoreRef.current = true;
-      const data = await apiService.searchMedia(query, targetPage);
-      if (data.length === 0) {
-        setHasMore(false);
+
+      let currentPage = targetPage;
+      let accumulatedData = [];
+      const targetCount = 10;
+      const maxPages = 15;
+
+      while (accumulatedData.length < targetCount && currentPage <= maxPages) {
+        const data = await apiService.searchMedia(query, currentPage);
+        if (data.length === 0) {
+          setHasMore(false);
+          break;
+        }
+
+        // Deduplicate with existing list and accumulated batch
+        const existingIds = new Set(mediaList.map(item => item.id));
+        const newUniqueItems = data.filter(
+          item => !existingIds.has(item.id) && !accumulatedData.some(a => a.id === item.id)
+        );
+
+        accumulatedData = [...accumulatedData, ...newUniqueItems];
+
+        if (data.length < 30) {
+          setHasMore(false);
+          break;
+        }
+
+        if (accumulatedData.length >= targetCount) {
+          break;
+        }
+
+        currentPage++;
+      }
+
+      if (accumulatedData.length > 0) {
+        setMediaList(prev => makeUnique([...prev, ...accumulatedData]));
+        setPage(currentPage);
       } else {
-        const sortedNewBatch = data; // Directly append raw pagination search results from API
-        setMediaList(prev => makeUnique([...prev, ...sortedNewBatch]));
-        setPage(targetPage);
+        setHasMore(false);
       }
     } catch (e) {
       console.error(e);
@@ -508,7 +596,7 @@ export default function HomeScreen({ navigation }) {
       setLoadingMore(false);
       loadingMoreRef.current = false;
     }
-  }, [hasMore, activeFilter]);
+  }, [hasMore, mediaList]);
 
   const handleLoadMore = useCallback(() => {
     if (loading || loadingMore || !hasMore) return;
@@ -523,12 +611,14 @@ export default function HomeScreen({ navigation }) {
   // ─── Filter / Category Selection ─────────────────────────────────────────
 
   const selectFilter = useCallback((filterName) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveFilter(filterName);
     setShowFilterMenu(false);
     loadTrendingData(0, false, filterName, activeCategory);
   }, [activeCategory, loadTrendingData]);
 
   const selectCategory = useCallback((categoryName) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveCategory(categoryName);
     setShowSidebar(false);
     setSearchQuery(''); // Reset search input query
@@ -560,17 +650,16 @@ export default function HomeScreen({ navigation }) {
     if (!pressHandlersRef.current[item.id]) {
       pressHandlersRef.current[item.id] = () => navigation.navigate('Details', { id: item.id });
     }
-    // Pass individual scalar/string props so MediaCard memo shallow-comparison works.
-    // Passing the whole `item` object would always look "new" if the list array changed.
+    const badgeType = getDisplayBadge(item, activeCategory);
     return (
       <MediaCard
         posterUri={item.poster}
         title={item.title}
-        type={item.type}
+        type={badgeType}
         onPress={pressHandlersRef.current[item.id]}
       />
     );
-  }, [navigation]);
+  }, [navigation, activeCategory]);
 
   // Pass ListFooter CLASS (not JSX element) as ListFooterComponent.
   // Use extraData so FlatList re-renders the footer when loadingMore flips,
@@ -608,7 +697,10 @@ export default function HomeScreen({ navigation }) {
   }, [handleSearch]);
 
   const handleToggleFilterMenu = useCallback(
-    () => setShowFilterMenu(prev => !prev),
+    () => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setShowFilterMenu(prev => !prev);
+    },
     []
   );
 
@@ -663,7 +755,10 @@ export default function HomeScreen({ navigation }) {
           <TouchableOpacity
             style={styles.filterBtn}
             activeOpacity={0.7}
-            onPress={() => setShowSearchFilterMenu(prev => !prev)}
+            onPress={() => {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setShowSearchFilterMenu(prev => !prev);
+            }}
           >
             <Text style={styles.filterBtnText}>{`Lang: ${searchLanguage} ▾`}</Text>
           </TouchableOpacity>
