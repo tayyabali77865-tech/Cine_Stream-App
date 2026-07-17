@@ -17,11 +17,27 @@ import { apiService } from '../services/apiService';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { Ionicons } from '@expo/vector-icons';
 
 // ─── Screen Dimensions ────────────────────────────────────────────────────────
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 const VIDEO_HEIGHT = Math.round(SCREEN_HEIGHT * 0.40);
+
+// Helper: format milliseconds to hh:mm:ss / mm:ss
+const formatTime = (ms) => {
+  if (isNaN(ms) || ms < 0) return '0:00';
+  const totalSecs = Math.floor(ms / 1000);
+  const hrs = Math.floor(totalSecs / 3600);
+  const mins = Math.floor((totalSecs % 3600) / 60);
+  const secs = totalSecs % 60;
+  const secsStr = secs < 10 ? `0${secs}` : secs;
+  if (hrs > 0) {
+    const minsStr = mins < 10 ? `0${mins}` : mins;
+    return `${hrs}:${minsStr}:${secsStr}`;
+  }
+  return `${mins}:${secsStr}`;
+};
 
 // ─── Pure Helpers (module-level) ──────────────────────────────────────────────
 
@@ -135,7 +151,15 @@ export default function PlayerScreen({ route, navigation }) {
   const [dlState, dispatchDl] = useReducer(downloadReducer, INITIAL_DOWNLOAD_STATE);
   const [qualityState, dispatchQuality] = useReducer(qualityReducer, INITIAL_QUALITY_STATE);
 
+  // ── Custom Player UI States ──────────────────────────────────────────────
+  const [playbackStatus, setPlaybackStatus] = React.useState(null);
+  const [controlsVisible, setControlsVisible] = React.useState(true);
+  const [isLocked, setIsLocked] = React.useState(false);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+
   // ── Refs (no re-render needed) ────────────────────────────────────────────
+  const videoRef = useRef(null);
+  const controlsTimerRef = useRef(null);
   const downloadRef = useRef(null);
   const resumeSnapshotRef = useRef(null);
   const lastTs = useRef(0);
@@ -189,6 +213,9 @@ export default function PlayerScreen({ route, navigation }) {
     return () => {
       sub.remove();
       clearOfflineTimer();
+      if (controlsTimerRef.current) {
+        clearTimeout(controlsTimerRef.current);
+      }
       if (downloadRef.current) {
         downloadRef.current.cancelAsync().catch(() => { });
       }
@@ -199,6 +226,64 @@ export default function PlayerScreen({ route, navigation }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ─── Custom Control Helpers ────────────────────────────────────────────────
+  const resetControlsTimer = useCallback(() => {
+    if (controlsTimerRef.current) {
+      clearTimeout(controlsTimerRef.current);
+    }
+    controlsTimerRef.current = setTimeout(() => {
+      setControlsVisible(false);
+    }, 3500);
+  }, []);
+
+  const handleScreenTouch = useCallback(() => {
+    setControlsVisible(prev => {
+      const next = !prev;
+      if (next) resetControlsTimer();
+      return next;
+    });
+  }, [resetControlsTimer]);
+
+  const togglePlay = useCallback(async () => {
+    if (!videoRef.current || !playbackStatus) return;
+    resetControlsTimer();
+    if (playbackStatus.isPlaying) {
+      await videoRef.current.pauseAsync();
+    } else {
+      await videoRef.current.playAsync();
+    }
+  }, [playbackStatus, resetControlsTimer]);
+
+  const seekDelta = useCallback(async (delta) => {
+    if (!videoRef.current || !playbackStatus) return;
+    resetControlsTimer();
+    const newPos = Math.max(0, Math.min(playbackStatus.positionMillis + delta, playbackStatus.durationMillis || 0));
+    await videoRef.current.setStatusAsync({ positionMillis: newPos });
+  }, [playbackStatus, resetControlsTimer]);
+
+  const toggleFullscreen = useCallback(async () => {
+    resetControlsTimer();
+    try {
+      if (isFullscreen) {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        setIsFullscreen(false);
+      } else {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
+        setIsFullscreen(true);
+      }
+    } catch (err) {
+      console.warn('Orientation change failed:', err);
+    }
+  }, [isFullscreen, resetControlsTimer]);
+
+  // Initial trigger for controls hide
+  useEffect(() => {
+    resetControlsTimer();
+    return () => {
+      if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
+    };
+  }, [resetControlsTimer]);
 
   // ── Stream Loader ─────────────────────────────────────────────────────────
   const loadStream = useCallback(async () => {
@@ -448,72 +533,170 @@ export default function PlayerScreen({ route, navigation }) {
   const { visible: showQualityModal, loading: qualitiesLoading, qualities, error: qualityError } = qualityState;
 
   // ── Render ────────────────────────────────────────────────────────────────
+  const isPlaying = playbackStatus && playbackStatus.isPlaying;
+  const isBuffering = playbackStatus && playbackStatus.isBuffering;
+  const position = playbackStatus ? playbackStatus.positionMillis : 0;
+  const duration = playbackStatus ? playbackStatus.durationMillis || 0 : 0;
+  const progressPercent = duration > 0 ? (position / duration) * 100 : 0;
+
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#050507" translucent={false} />
+    <View style={[styles.container, isFullscreen && styles.containerFullscreen]}>
+      <StatusBar barStyle="light-content" backgroundColor="#050507" translucent={false} hidden={isFullscreen} />
 
-      {/* ── Video Player ── */}
-      <Video
-        source={{
-          uri: sources.videoUrl,
-          headers: {
-            Referer: sources.referer,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          }
-        }}
-        style={styles.video}
-        useNativeControls={true}
-        resizeMode={ResizeMode.CONTAIN}
-        shouldPlay
-        bufferConfig={{
-          maxBufferMs: 15000,
-          minBufferMs: 2500,
-          bufferForPlaybackMs: 1000,
-          bufferForPlaybackAfterRebufferMs: 2000
-        }}
-        onError={(err) => {
-          console.error('[Player] video error:', err);
-          dispatchStream({ type: 'ERROR', error: 'Playback failed. The session may have expired.' });
-        }}
-      />
-
-
-      {/* ── Info + Download Panel ── */}
-      <ScrollView style={styles.panel} contentContainerStyle={styles.panelContent}>
-        <Text style={styles.mediaTitle} numberOfLines={2}>{videoTitle}</Text>
-        <Text style={styles.langLabel}>
-          Audio: <Text style={styles.langValue}>{activeLanguage}</Text>
-        </Text>
-
+      {/* ── Video Player Container ── */}
+      <View style={[styles.videoContainer, isFullscreen && styles.videoContainerFullscreen]}>
         <TouchableOpacity
-          id="download-button"
-          style={[styles.dlBtn, downloading && styles.dlBtnDisabled]}
-          onPress={openDownloadModal}
-          disabled={downloading}
-          activeOpacity={0.8}
+          activeOpacity={1}
+          onPress={handleScreenTouch}
+          style={styles.videoTouchWrapper}
         >
-          <Text style={styles.dlBtnText}>⬇  Download Video</Text>
-        </TouchableOpacity>
-      </ScrollView>
+          <Video
+            ref={videoRef}
+            source={{
+              uri: sources.videoUrl,
+              headers: {
+                Referer: sources.referer,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              }
+            }}
+            style={isFullscreen ? styles.videoFullscreen : styles.video}
+            useNativeControls={false} // Disable standard system overlay controls
+            resizeMode={ResizeMode.CONTAIN}
+            shouldPlay
+            bufferConfig={{
+              maxBufferMs: 15000,
+              minBufferMs: 2500,
+              bufferForPlaybackMs: 1000,
+              bufferForPlaybackAfterRebufferMs: 2000
+            }}
+            onPlaybackStatusUpdate={(status) => setPlaybackStatus(status)}
+            onError={(err) => {
+              console.error('[Player] video error:', err);
+              dispatchStream({ type: 'ERROR', error: 'Playback failed. The session may have expired.' });
+            }}
+          />
 
-      {/* ── Close Button ── */}
-      <TouchableOpacity
-        id="close-player-button"
-        style={styles.closeBtn}
-        onPress={() => {
-          if (downloading) {
-            Alert.alert('Active Download', 'Cancel the download and exit?', [
-              { text: 'Stay', style: 'cancel' },
-              { text: 'Cancel & Exit', style: 'destructive', onPress: () => { cancelDownload(); navigation.goBack(); } }
-            ]);
-          } else {
-            navigation.goBack();
-          }
-        }}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.closeBtnText}>✕  Close</Text>
-      </TouchableOpacity>
+          {/* ── Buffering Indicator Overlay ── */}
+          {isBuffering && (
+            <View style={styles.bufferingOverlay}>
+              <ActivityIndicator size="large" color="#E50914" />
+            </View>
+          )}
+
+          {/* ── Custom HUD Controls Overlay ── */}
+          {controlsVisible && (
+            <View style={styles.hudOverlay}>
+              
+              {/* Lock Mode active (Accidental touch protection) */}
+              {isLocked ? (
+                <View style={styles.lockHUDWrapper}>
+                  <TouchableOpacity
+                    style={styles.lockIconBtn}
+                    onPress={() => {
+                      setIsLocked(false);
+                      resetControlsTimer();
+                    }}
+                  >
+                    <Ionicons name="lock-closed" size={28} color="#E50914" />
+                    <Text style={styles.lockText}>Tap to Unlock</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.hudContainer}>
+                  
+                  {/* Top Bar (Close/Back details) */}
+                  <View style={styles.hudTopBar}>
+                    <TouchableOpacity
+                      style={styles.hudBackBtn}
+                      onPress={() => {
+                        if (downloading) {
+                          Alert.alert('Active Download', 'Cancel the download and exit?', [
+                            { text: 'Stay', style: 'cancel' },
+                            { text: 'Cancel & Exit', style: 'destructive', onPress: () => { cancelDownload(); navigation.goBack(); } }
+                          ]);
+                        } else {
+                          navigation.goBack();
+                        }
+                      }}
+                    >
+                      <Ionicons name="chevron-back" size={26} color="#FFF" />
+                    </TouchableOpacity>
+                    <Text style={styles.hudTitle} numberOfLines={1}>
+                      {videoTitle}
+                    </Text>
+                  </View>
+
+                  {/* Center Controls (Seek backward, Play/Pause, Seek forward) */}
+                  <View style={styles.hudCenterControls}>
+                    <TouchableOpacity style={styles.hudControlBtn} onPress={() => seekDelta(-10000)}>
+                      <Ionicons name="play-back" size={32} color="#FFF" />
+                      <Text style={styles.seekText}>-10s</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={[styles.hudControlBtn, styles.hudPlayBtn]} onPress={togglePlay}>
+                      <Ionicons name={isPlaying ? "pause" : "play"} size={44} color="#FFF" />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.hudControlBtn} onPress={() => seekDelta(10000)}>
+                      <Ionicons name="play-forward" size={32} color="#FFF" />
+                      <Text style={styles.seekText}>+10s</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Bottom Controls Bar (Timeline progress, duration, Fullscreen & Lock) */}
+                  <View style={styles.hudBottomBar}>
+                    {/* Time progress indicators */}
+                    <Text style={styles.timeLabel}>{formatTime(position)}</Text>
+                    
+                    {/* Timeline progress track */}
+                    <View style={styles.hudTimelineTrack}>
+                      <View style={[styles.hudTimelineFill, { width: `${progressPercent}%` }]} />
+                    </View>
+
+                    <Text style={styles.timeLabel}>{formatTime(duration)}</Text>
+
+                    {/* Action buttons (Lock and Rotate/Fullscreen) */}
+                    <TouchableOpacity 
+                      style={styles.bottomActionBtn} 
+                      onPress={() => {
+                        setIsLocked(true);
+                        resetControlsTimer();
+                      }}
+                    >
+                      <Ionicons name="lock-open-outline" size={20} color="#FFF" />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.bottomActionBtn} onPress={toggleFullscreen}>
+                      <Ionicons name={isFullscreen ? "contract" : "expand"} size={20} color="#FFF" />
+                    </TouchableOpacity>
+                  </View>
+
+                </View>
+              )}
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Info + Download Panel (Hidden in Fullscreen Mode) ── */}
+      {!isFullscreen && (
+        <ScrollView style={styles.panel} contentContainerStyle={styles.panelContent}>
+          <Text style={styles.mediaTitle} numberOfLines={2}>{videoTitle}</Text>
+          <Text style={styles.langLabel}>
+            Audio: <Text style={styles.langValue}>{activeLanguage}</Text>
+          </Text>
+
+          <TouchableOpacity
+            id="download-button"
+            style={[styles.dlBtn, downloading && styles.dlBtnDisabled]}
+            onPress={openDownloadModal}
+            disabled={downloading}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.dlBtnText}>⬇  Download Video</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      )}
 
       {/* ── Quality Selection Modal ── */}
       <Modal
@@ -621,7 +804,144 @@ export default function PlayerScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#050507' },
-  video: { width: '100%', height: VIDEO_HEIGHT, zIndex: 10, elevation: 10 },
+  containerFullscreen: { backgroundColor: '#000' },
+  videoContainer: {
+    width: '100%',
+    height: VIDEO_HEIGHT,
+    backgroundColor: '#000',
+    position: 'relative',
+    zIndex: 10,
+  },
+  videoContainerFullscreen: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  videoTouchWrapper: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  video: { width: '100%', height: '100%' },
+  videoFullscreen: { width: '100%', height: '100%' },
+  bufferingOverlay: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 15,
+  },
+  hudOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    zIndex: 20,
+  },
+  hudContainer: {
+    flex: 1,
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  lockHUDWrapper: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  lockIconBtn: {
+    padding: 18,
+    borderRadius: 50,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  lockText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginTop: 6,
+  },
+  hudTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  hudBackBtn: {
+    padding: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 50,
+    marginRight: 12,
+  },
+  hudTitle: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  hudCenterControls: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 40,
+  },
+  hudControlBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 60,
+    height: 60,
+  },
+  hudPlayBtn: {
+    backgroundColor: 'rgba(229, 9, 20, 0.85)',
+    borderRadius: 50,
+    width: 75,
+    height: 75,
+    shadowColor: '#E50914',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  seekText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginTop: 2,
+  },
+  hudBottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 4,
+  },
+  timeLabel: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  hudTimelineTrack: {
+    flex: 1,
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  hudTimelineFill: {
+    height: '100%',
+    backgroundColor: '#E50914',
+    borderRadius: 2,
+  },
+  bottomActionBtn: {
+    padding: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 8,
+  },
   center: {
     flex: 1,
     backgroundColor: '#050507',
