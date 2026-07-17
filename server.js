@@ -435,7 +435,7 @@ app.get('/api/stream/:id', async (req, res) => {
         videoUrl: customLinks[0].url,
         qualities: customLinks,
         audioUrl: null,
-        referer: ''
+        referer: null
       });
     }
 
