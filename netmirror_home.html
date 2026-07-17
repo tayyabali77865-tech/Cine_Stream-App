@@ -770,6 +770,8 @@
     }
 
     // ─── Reported Errors Management ────────────────────────────
+    let cachedReportedErrors = [];
+
     async function loadReportedList() {
       const container = document.getElementById('reportedList');
       try {
@@ -778,8 +780,8 @@
         const res = await fetch(`/api${endpoint}`, { headers });
         if (!res.ok) throw new Error('Load failed');
 
-        const list = await res.json();
-        if (list.length === 0) {
+        cachedReportedErrors = await res.json();
+        if (cachedReportedErrors.length === 0) {
           container.innerHTML = `
             <div class="empty-state">
               <div class="empty-icon">✔️</div>
@@ -790,7 +792,7 @@
         }
 
         container.innerHTML = '';
-        list.forEach(item => {
+        cachedReportedErrors.forEach((item, index) => {
           const itemEl = document.createElement('div');
           itemEl.className = 'media-item';
           itemEl.id = `reported-row-${item.id}`;
@@ -808,7 +810,7 @@
               </div>
             </div>
             <div class="action-row">
-              <button class="btn-icon btn-success" onclick="selectReportedForFix('${item.id}', '${escapeHtml(item.title).replace(/'/g, "\\'")}', '${item.type}')">🔧 Fix URL</button>
+              <button class="btn-icon btn-success" onclick="selectReportedForFix(${index})">🔧 Fix URL</button>
               <button class="btn-icon btn-danger" onclick="ignoreReportedError('${item.id}')">✕ Ignore</button>
             </div>
           `;
@@ -819,16 +821,19 @@
       }
     }
 
-    async function selectReportedForFix(id, title, type) {
-      activeMediaItem = { id, title, type };
+    async function selectReportedForFix(index) {
+      const item = cachedReportedErrors[index];
+      if (!item) return;
+
+      activeMediaItem = { id: item.id, title: item.title, type: item.type };
       const editorSection = document.getElementById('editorSection');
       editorSection.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><div>Loading config...</div></div>';
 
       try {
-        const endpoint = `/media-custom/${id}`;
+        const endpoint = `/media-custom/${item.id}`;
         const headers = await makeHeaders(endpoint);
         const res = await fetch(`/api${endpoint}`, { headers });
-        const config = res.ok ? await res.json() : { id, customLinks: [] };
+        const config = res.ok ? await res.json() : { id: item.id, customLinks: [] };
 
         renderEditor(config);
       } catch (err) {
