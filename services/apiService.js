@@ -282,5 +282,28 @@ export const apiService = {
       console.warn('Download qualities fetch failed:', e);
       throw e;
     }
+  },
+
+  /**
+   * Reports a playback error to the backend server to add it to the admin panel.
+   */
+  async reportPlaybackError(id, title, type, season = '', episode = '') {
+    try {
+      const response = await customFetch('/report-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: String(id),
+          title: title || 'Unknown Title',
+          type: type || 'Movie',
+          season: season ? String(season) : '',
+          episode: episode ? String(episode) : ''
+        })
+      });
+      return response.ok;
+    } catch (e) {
+      console.warn('Playback error report failed:', e);
+      return false;
+    }
   }
 };

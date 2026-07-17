@@ -512,6 +512,17 @@
         </div>
       </div>
 
+      <!-- Reported Broken Videos Section -->
+      <div class="panel deleted-list-panel">
+        <h2>⚠️ Reported Playback Errors</h2>
+        <div class="media-list" id="reportedList">
+          <div class="empty-state">
+            <div class="empty-icon">✔️</div>
+            <div>No playback errors reported. All streams working!</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Restore Deleted Items Section -->
       <div class="panel deleted-list-panel">
         <h2>🔄 Restore Deleted Media</h2>
@@ -547,6 +558,7 @@
       document.getElementById('loginScreen').style.display = 'none';
       document.getElementById('mainContent').style.display = 'flex';
       loadDeletedList(); // Populate deleted list once admin accesses
+      loadReportedList(); // Populate reported list once admin accesses
     }
 
     function logout() {
@@ -757,6 +769,96 @@
       }
     }
 
+    // ─── Reported Errors Management ────────────────────────────
+    async function loadReportedList() {
+      const container = document.getElementById('reportedList');
+      try {
+        const endpoint = '/reported-errors';
+        const headers = await makeHeaders(endpoint);
+        const res = await fetch(`/api${endpoint}`, { headers });
+        if (!res.ok) throw new Error('Load failed');
+
+        const list = await res.json();
+        if (list.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-icon">✔️</div>
+              <div>No playback errors reported. All streams working!</div>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = '';
+        list.forEach(item => {
+          const itemEl = document.createElement('div');
+          itemEl.className = 'media-item';
+          itemEl.id = `reported-row-${item.id}`;
+
+          const episodeInfo = item.season ? ` • <span>S${item.season} E${item.episode}</span>` : '';
+
+          itemEl.innerHTML = `
+            <div class="media-info">
+              <div class="media-title">${escapeHtml(item.title)}</div>
+              <div class="media-meta">
+                <span>ID: ${item.id}</span>
+                • <span>Type: ${item.type}</span>
+                ${episodeInfo}
+                • <span style="color: var(--danger); font-weight:600;">Reported: ${new Date(item.reportedAt).toLocaleString()}</span>
+              </div>
+            </div>
+            <div class="action-row">
+              <button class="btn-icon btn-success" onclick="selectReportedForFix('${item.id}', '${escapeHtml(item.title).replace(/'/g, "\\'")}', '${item.type}')">🔧 Fix URL</button>
+              <button class="btn-icon btn-danger" onclick="ignoreReportedError('${item.id}')">✕ Ignore</button>
+            </div>
+          `;
+          container.appendChild(itemEl);
+        });
+      } catch (err) {
+        console.error('Failed to load reported list:', err.message);
+      }
+    }
+
+    async function selectReportedForFix(id, title, type) {
+      activeMediaItem = { id, title, type };
+      const editorSection = document.getElementById('editorSection');
+      editorSection.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><div>Loading config...</div></div>';
+
+      try {
+        const endpoint = `/media-custom/${id}`;
+        const headers = await makeHeaders(endpoint);
+        const res = await fetch(`/api${endpoint}`, { headers });
+        const config = res.ok ? await res.json() : { id, customLinks: [] };
+
+        renderEditor(config);
+      } catch (err) {
+        showToast('Failed to load item config', true);
+      }
+    }
+
+    async function ignoreReportedError(id) {
+      if (!confirm(`Are you sure you want to clear/ignore the error report for ID ${id}?`)) return;
+
+      try {
+        const endpoint = `/reported-errors/${id}`;
+        const headers = await makeHeaders(endpoint);
+        const res = await fetch(`/api${endpoint}`, {
+          method: 'DELETE',
+          headers
+        });
+
+        if (!res.ok) throw new Error('Ignore failed');
+        showToast('Error report ignored.');
+
+        const row = document.getElementById(`reported-row-${id}`);
+        if (row) row.remove();
+
+        loadReportedList();
+      } catch (err) {
+        showToast('Action Failed', true);
+      }
+    }
+
     // ─── Select Media for Custom Link Editor ───────────────────
     async function selectMediaItem(index) {
       const item = cachedSearchResults[index];
@@ -870,6 +972,7 @@
         if (!res.ok) throw new Error('Save failed.');
         showToast('Custom links saved successfully!');
         resetEditor();
+        loadReportedList(); // Reload reported list in case it was a reported broken link
         searchMedia();
       } catch (err) {
         showToast('Failed to save link configuration', true);

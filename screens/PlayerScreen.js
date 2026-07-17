@@ -634,6 +634,12 @@ export default function PlayerScreen({ route, navigation }) {
             }}
             onError={(err) => {
               console.error('[Player] video error:', err);
+              // Report broken link to backend database
+              const mediaType = season ? 'TV Show' : 'Movie';
+              apiService.reportPlaybackError(id, title, mediaType, season || '', episode || '')
+                .then(success => {
+                  if (success) console.log(`[Player] Successfully reported broken media ID: ${id}`);
+                });
               dispatchStream({ type: 'ERROR', error: 'Playback failed. The session may have expired.' });
             }}
           />

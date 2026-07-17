@@ -14,13 +14,24 @@ const customOverrideSchema = new mongoose.Schema({
   updatedAt: { type: String, default: () => new Date().toISOString() }
 });
 
+const reportedErrorSchema = new mongoose.Schema({
+  id:         { type: String, required: true, unique: true, index: true },
+  title:      { type: String, default: 'Unknown Title' },
+  type:       { type: String, default: 'Movie' },
+  season:     { type: String, default: '' },
+  episode:    { type: String, default: '' },
+  reportedAt: { type: String, default: () => new Date().toISOString() }
+});
+
 const DeletedMedia   = mongoose.model('DeletedMedia',   deletedMediaSchema);
 const CustomOverride = mongoose.model('CustomOverride', customOverrideSchema);
+const ReportedError  = mongoose.model('ReportedError',  reportedErrorSchema);
 
 // ─── In-Memory Fallback (if MongoDB is offline) ───────────────────────────────
 
 let fallbackDeletedIds  = [];
 let fallbackOverrides   = {};
+let fallbackReportedErrors = {};
 let isConnected         = false;
 
 // ─── Connection ───────────────────────────────────────────────────────────────
@@ -167,6 +178,64 @@ async function deleteOverride(id) {
   }
 }
 
+// ─── Reported Error Operations ────────────────────────────────────────────────
+
+async function addReportedError(id, title, mediaType, season = '', episode = '') {
+  const idStr = String(id);
+  if (!isConnected) {
+    fallbackReportedErrors[idStr] = {
+      id: idStr,
+      title,
+      type: mediaType,
+      season: String(season),
+      episode: String(episode),
+      reportedAt: new Date().toISOString()
+    };
+    return;
+  }
+  try {
+    await ReportedError.updateOne(
+      { id: idStr },
+      {
+        id: idStr,
+        title,
+        type: mediaType,
+        season: String(season),
+        episode: String(episode),
+        reportedAt: new Date().toISOString()
+      },
+      { upsert: true }
+    );
+  } catch (err) {
+    console.error('[MongoDB] addReportedError error:', err.message);
+  }
+}
+
+async function removeReportedError(id) {
+  const idStr = String(id);
+  if (!isConnected) {
+    delete fallbackReportedErrors[idStr];
+    return;
+  }
+  try {
+    await ReportedError.deleteOne({ id: idStr });
+  } catch (err) {
+    console.error('[MongoDB] removeReportedError error:', err.message);
+  }
+}
+
+async function getAllReportedErrors() {
+  if (!isConnected) {
+    return Object.values(fallbackReportedErrors);
+  }
+  try {
+    return await ReportedError.find({}, { _id: 0, __v: 0 }).lean();
+  } catch (err) {
+    console.error('[MongoDB] getAllReportedErrors error:', err.message);
+    return [];
+  }
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -178,5 +247,8 @@ module.exports = {
   getAllDeleted,
   getOverride,
   setOverride,
-  deleteOverride
+  deleteOverride,
+  addReportedError,
+  removeReportedError,
+  getAllReportedErrors
 };

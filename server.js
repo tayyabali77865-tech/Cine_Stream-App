@@ -123,7 +123,7 @@ app.use((req, res, next) => {
 // HMAC Request Signature Authentication Middleware (Protecting only backend api endpoints)
 app.use((req, res, next) => {
   const urlClean = req.originalUrl.split('?')[0];
-  
+
   // Only protect API routes. Static web assets/web app routes are fully public.
   if (!urlClean.startsWith('/api/')) {
     return next();
@@ -165,28 +165,20 @@ app.use((req, res, next) => {
 const REFERER_URL = 'https://fmoviesunblocked.net/';
 const HM_SECRET = 'net###@@sss';
 
-const getHeaders = (referer = REFERER_URL, clientIp = null) => {
-  const hdrs = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': referer,
-    'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-    'Sec-Ch-Ua-Mobile': '?0',
-    'Sec-Ch-Ua-Platform': '"Windows"',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'cross-site',
-    'Sec-Fetch-User': '?1',
-    'Upgrade-Insecure-Requests': '1'
-  };
-  if (clientIp) {
-    hdrs['X-Forwarded-For'] = clientIp;
-    hdrs['X-Real-IP'] = clientIp;
-    hdrs['Client-IP'] = clientIp;
-  }
-  return hdrs;
-};
+const getHeaders = (referer = REFERER_URL) => ({
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Referer': referer,
+  'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+  'Sec-Ch-Ua-Mobile': '?0',
+  'Sec-Ch-Ua-Platform': '"Windows"',
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'cross-site',
+  'Sec-Fetch-User': '?1',
+  'Upgrade-Insecure-Requests': '1'
+});
 
 async function isDeleted(id) {
   return db.isDeleted(id);
@@ -273,8 +265,8 @@ app.get('/api/trending', async (req, res) => {
       const results = data.results || [];
 
       // isDeleted + isCustom are async — resolve both with Promise.all
-      const deletedFlags  = await Promise.all(results.map(item => isDeleted(item.id)));
-      const customFlags   = await Promise.all(results.map(item => db.getOverride(String(item.id))));
+      const deletedFlags = await Promise.all(results.map(item => isDeleted(item.id)));
+      const customFlags = await Promise.all(results.map(item => db.getOverride(String(item.id))));
       const filteredAnime = results.filter((_, i) => !deletedFlags[i]);
       const mediaList = filteredAnime.map((item, i) => ({
         id: item.id,
@@ -303,9 +295,9 @@ app.get('/api/trending', async (req, res) => {
     const results = data.results || [];
 
     // isDeleted + isCustom are async — resolve both with Promise.all
-    const deletedFlags   = await Promise.all(results.map(item => isDeleted(item.id)));
-    const customFlags    = await Promise.all(results.map(item => db.getOverride(String(item.id))));
-    const filteredItems  = results.filter((_, i) => !deletedFlags[i]);
+    const deletedFlags = await Promise.all(results.map(item => isDeleted(item.id)));
+    const customFlags = await Promise.all(results.map(item => db.getOverride(String(item.id))));
+    const filteredItems = results.filter((_, i) => !deletedFlags[i]);
     const mediaList = filteredItems.map((item) => ({
       id: item.id,
       title: item.title ? item.title.trim() : 'Unknown Title',
@@ -423,13 +415,17 @@ app.get('/api/stream/:id', async (req, res) => {
   const se = req.query.season || '1';
   const ep = req.query.episode || '1';
   const lang = req.query.lang || 'Hindi';
-  const clientIp = req.headers['x-forwarded-for'] || req.ip;
 
   try {
     const cacheKey = `${id}:${se}:${ep}:${lang}`;
 
-    // ✅ Always perform fresh stream resolution to avoid CDN URL signature expiration (usually < 2 minutes)
-    // streamCache is bypassed to prevent "session expired" errors across different client IPs.
+    // ✅ Check streamCache first — avoid re-resolving for same stream
+    const cachedEntry = streamCache.cache.get(cacheKey);
+    if (cachedEntry && (Date.now() - cachedEntry.fetchedAt) < parseInt(process.env.CACHE_STREAM_TTL_MS || '600000')) {
+      console.log(`⚡ [StreamCache] HIT for key: ${cacheKey}`);
+      res.setHeader('X-Cache-Status', 'HIT');
+      return res.json(cachedEntry.value);
+    }
 
     // A. Intercept if user has custom overridden URLs
     const customLinks = await db.getOverride(String(id));
@@ -481,13 +477,12 @@ app.get('/api/stream/:id', async (req, res) => {
       }
     }
 
-    const hasValidSeasons = Array.isArray(item.season) && item.season.length > 0 && item.season.some(s => s && s.se > 0);
     let targetSe = se;
     let targetEp = ep;
-    if (item.media_type !== 'tv' || !item.season || !hasValidSeasons) {
+    if (item.media_type !== 'tv' || !item.season || (Array.isArray(item.season) && item.season.length === 0)) {
       targetSe = '';
       targetEp = '';
-      console.log(`🎬 Target item is classified as Movie/Single release or has no valid seasons. Clearing season/episode parameters.`);
+      console.log(`🎬 Target item is classified as Movie/Single release. Clearing season/episode parameters.`);
     }
 
     // Try Scenario 1 (direct embed resolver)
@@ -519,7 +514,7 @@ app.get('/api/stream/:id', async (req, res) => {
       const dp = item.dp;
       const titleClean = item.title ? item.title.trim() : 'Video';
       const na = Buffer.from(titleClean).toString('base64');
-      const watchboxResult = await resolveWatchboxStream(targetId, targetSe, targetEp, dp, na, clientIp);
+      const watchboxResult = await resolveWatchboxStream(targetId, targetSe, targetEp, dp, na);
       if (watchboxResult) {
         resolvedVideoUrl = watchboxResult.videoUrl;
         resolvedQualities = watchboxResult.qualities || [];
@@ -530,7 +525,7 @@ app.get('/api/stream/:id', async (req, res) => {
     if (!resolvedVideoUrl && item.embed_json && Array.isArray(item.embed_json) && item.embed_json.length > 0) {
       const embedItem = item.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
       if (embedItem) {
-        const embedJsonResult = await resolveEmbedJsonStream(embedItem, clientIp);
+        const embedJsonResult = await resolveEmbedJsonStream(embedItem);
         if (embedJsonResult) {
           resolvedVideoUrl = embedJsonResult.videoUrl;
           resolvedQualities = embedJsonResult.qualities || [];
@@ -589,7 +584,7 @@ app.get('/api/stream/:id', async (req, res) => {
 
               if (!resolvedVideoUrl && altItemMeta.dp) {
                 const altNa = Buffer.from(altItemMeta.title ? altItemMeta.title.trim() : 'Video').toString('base64');
-                const watchboxResult = await resolveWatchboxStream(altItem.id, targetSe, targetEp, altItemMeta.dp, altNa, clientIp);
+                const watchboxResult = await resolveWatchboxStream(altItem.id, targetSe, targetEp, altItemMeta.dp, altNa);
                 if (watchboxResult) {
                   resolvedVideoUrl = watchboxResult.videoUrl;
                   resolvedQualities = watchboxResult.qualities || [];
@@ -599,7 +594,7 @@ app.get('/api/stream/:id', async (req, res) => {
               if (!resolvedVideoUrl && altItemMeta.embed_json && Array.isArray(altItemMeta.embed_json) && altItemMeta.embed_json.length > 0) {
                 const altEmbedItem = altItemMeta.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
                 if (altEmbedItem) {
-                  const embedJsonResult = await resolveEmbedJsonStream(altEmbedItem, clientIp);
+                  const embedJsonResult = await resolveEmbedJsonStream(altEmbedItem);
                   if (embedJsonResult) {
                     resolvedVideoUrl = embedJsonResult.videoUrl;
                     resolvedQualities = embedJsonResult.qualities || [];
@@ -640,6 +635,8 @@ app.get('/api/stream/:id', async (req, res) => {
       referer: REFERER_URL
     };
 
+    // ✅ Cache the resolved stream to avoid re-resolving for 10 minutes
+    streamCache.set(cacheKey, streamResult);
     console.log(`🔥 Resolved final streaming file: ${resolvedVideoUrl}`);
     res.setHeader('X-Cache-Status', 'MISS');
     res.json(streamResult);
@@ -660,7 +657,6 @@ app.get('/api/download-qualities/:id', async (req, res) => {
   const se = req.query.season || '';
   const ep = req.query.episode || '';
   const lang = req.query.lang || 'Hindi';
-  const clientIp = req.headers['x-forwarded-for'] || req.ip;
 
   try {
     // A. Intercept if user has custom overridden download URLs
@@ -713,7 +709,7 @@ app.get('/api/download-qualities/:id', async (req, res) => {
       const dp = item.dp;
       const titleClean = item.title ? item.title.trim() : 'Video';
       const na = Buffer.from(titleClean).toString('base64');
-      qualities = await extractWatchboxQualities(targetId, targetSe, targetEp, dp, na, clientIp);
+      qualities = await extractWatchboxQualities(targetId, targetSe, targetEp, dp, na);
     }
 
     // Strategy B: Embed / drivehub-style — single quality from s= param
@@ -744,7 +740,7 @@ app.get('/api/download-qualities/:id', async (req, res) => {
     if (qualities.length === 0 && item.embed_json && Array.isArray(item.embed_json) && item.embed_json.length > 0) {
       const targetItem = item.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
       if (targetItem) {
-        const embedJsonResult = await resolveEmbedJsonStream(targetItem, clientIp);
+        const embedJsonResult = await resolveEmbedJsonStream(targetItem);
         if (embedJsonResult) {
           if (embedJsonResult.qualities && embedJsonResult.qualities.length > 0) {
             qualities = embedJsonResult.qualities;
@@ -777,7 +773,7 @@ app.get('/api/download-qualities/:id', async (req, res) => {
 /**
  * Extracts download quality options from watchbox player HTML by querying all domains concurrently.
  */
-async function extractWatchboxQualities(id, se, ep, dp, na, clientIp = null) {
+async function extractWatchboxQualities(id, se, ep, dp, na) {
   const WATCHBOX_DOMAINS = [
     'speed.watch22.shop',
     'play.watch22.shop',
@@ -790,7 +786,7 @@ async function extractWatchboxQualities(id, se, ep, dp, na, clientIp = null) {
   const promises = WATCHBOX_DOMAINS.map(async (domain) => {
     const baseUrl = `https://${domain}/play/watchbox.php?id=${id}&se=${se}&ep=${ep}&dp=${dp}&na=${encodeURIComponent(na)}&exten=1`;
     const dummyRes = await axios.get(`${baseUrl}&ts=0&sig=0`, {
-      headers: getHeaders(netmirrorReferer, clientIp),
+      headers: getHeaders(netmirrorReferer),
       timeout: 2500
     });
 
@@ -800,7 +796,7 @@ async function extractWatchboxQualities(id, se, ep, dp, na, clientIp = null) {
     const serverTime = timeMatch[1];
     const signature = crypto.createHmac('sha256', HM_SECRET).update(String(serverTime)).digest('hex');
     const authRes = await axios.get(`${baseUrl}&ts=${serverTime}&sig=${signature}`, {
-      headers: getHeaders(netmirrorReferer, clientIp),
+      headers: getHeaders(netmirrorReferer),
       timeout: 3000
     });
     const html = authRes.data;
@@ -885,7 +881,7 @@ async function extractDirectVideoLink(hostUrl) {
 /**
  * Syncs time and generates dynamic HMAC signatures to unlock watchbox player streams
  */
-async function resolveWatchboxStream(id, se, ep, dp, na, clientIp = null) {
+async function resolveWatchboxStream(id, se, ep, dp, na) {
   const WATCHBOX_DOMAINS = [
     'speed.watch22.shop',
     'play.watch22.shop',
@@ -903,7 +899,7 @@ async function resolveWatchboxStream(id, se, ep, dp, na, clientIp = null) {
       const dummyUrl = `${watchboxBaseUrl}&ts=0&sig=0`;
 
       const dummyRes = await axios.get(dummyUrl, {
-        headers: getHeaders(netmirrorReferer, clientIp),
+        headers: getHeaders(netmirrorReferer),
         timeout: 2500
       });
 
@@ -917,7 +913,7 @@ async function resolveWatchboxStream(id, se, ep, dp, na, clientIp = null) {
         const authUrl = `${watchboxBaseUrl}&ts=${serverTime}&sig=${signature}`;
 
         const authRes = await axios.get(authUrl, {
-          headers: getHeaders(netmirrorReferer, clientIp),
+          headers: getHeaders(netmirrorReferer),
           timeout: 3000
         });
         htmlContent = authRes.data;
@@ -953,7 +949,7 @@ async function resolveWatchboxStream(id, se, ep, dp, na, clientIp = null) {
 /**
  * Resolves streams using the embed_json configuration (concurrently across watchbox servers)
  */
-async function resolveEmbedJsonStream(embedItem, clientIp = null) {
+async function resolveEmbedJsonStream(embedItem) {
   const WATCHBOX_DOMAINS = [
     'speed.watch22.shop',
     'play.watch22.shop',
@@ -971,7 +967,7 @@ async function resolveEmbedJsonStream(embedItem, clientIp = null) {
       const dummyUrl = `${watchboxBaseUrl}&ts=0&sig=0`;
 
       const dummyRes = await axios.get(dummyUrl, {
-        headers: getHeaders(netmirrorReferer, clientIp),
+        headers: getHeaders(netmirrorReferer),
         timeout: 6000
       });
 
@@ -985,7 +981,7 @@ async function resolveEmbedJsonStream(embedItem, clientIp = null) {
         const authUrl = `${watchboxBaseUrl}&ts=${serverTime}&sig=${signature}`;
 
         const authRes = await axios.get(authUrl, {
-          headers: getHeaders(netmirrorReferer, clientIp),
+          headers: getHeaders(netmirrorReferer),
           timeout: 6000
         });
         htmlContent = authRes.data;
@@ -1090,9 +1086,35 @@ app.post('/api/media-custom/:id', async (req, res) => {
     await db.deleteOverride(id);
   } else {
     await db.setOverride(id, customLinks);
+    // Automatically clear reported error for this ID since it's now custom-overridden
+    await db.removeReportedError(id);
   }
 
   res.json({ success: true, message: `Custom links saved for Media ID ${id}.` });
+});
+
+// CRUD Endpoint: POST Report broken video
+app.post('/api/report-error', async (req, res) => {
+  const { id, title, type, season, episode } = req.body;
+  if (!id) return res.status(400).json({ error: 'Missing ID parameter' });
+
+  await db.addReportedError(id, title || 'Unknown Title', type || 'Movie', season || '', episode || '');
+  res.json({ success: true, message: `Media ID ${id} reported as broken.` });
+});
+
+// CRUD Endpoint: GET List of Reported Errors
+app.get('/api/reported-errors', async (req, res) => {
+  const list = await db.getAllReportedErrors();
+  res.json(list);
+});
+
+// CRUD Endpoint: DELETE Ignore / Clear Reported Error
+app.delete('/api/reported-errors/:id', async (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ error: 'Missing ID parameter' });
+
+  await db.removeReportedError(id);
+  res.json({ success: true, message: `Reported error for ID ${id} cleared.` });
 });
 
 // Telemetry & Health endpoint
