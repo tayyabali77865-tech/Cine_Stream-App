@@ -360,6 +360,22 @@ export default function HomeScreen({ navigation }) {
   const loadingRef = useRef(false);
   const loadingMoreRef = useRef(false);
 
+  const mediaListRef = useRef(mediaList);
+  const hasMoreRef = useRef(hasMore);
+  const pageRef = useRef(page);
+  const isSearchingRef = useRef(isSearching);
+  const searchQueryRef = useRef(searchQuery);
+  const activeFilterRef = useRef(activeFilter);
+  const activeCategoryRef = useRef(activeCategory);
+
+  mediaListRef.current = mediaList;
+  hasMoreRef.current = hasMore;
+  pageRef.current = page;
+  isSearchingRef.current = isSearching;
+  searchQueryRef.current = searchQuery;
+  activeFilterRef.current = activeFilter;
+  activeCategoryRef.current = activeCategory;
+
   // ── Keep a ref to the current animation loop so we can stop it cleanly ──
   const pulseLoopRef = useRef(null);
 
@@ -424,7 +440,12 @@ export default function HomeScreen({ navigation }) {
     currentFilter = activeFilter,
     currentCategory = activeCategory
   ) => {
-    if (isLoadMore && (loadingMoreRef.current || !hasMore)) return;
+    const hasMoreVal = hasMoreRef.current;
+    console.log(`[LoadMore] loadTrendingData triggered. targetPage: ${targetPage}, isLoadMore: ${isLoadMore}, loadingMore: ${loadingMoreRef.current}, loading: ${loadingRef.current}, hasMore: ${hasMoreVal}`);
+    if (isLoadMore && (loadingMoreRef.current || !hasMoreVal)) {
+      console.log(`[LoadMore] loadTrendingData returned early. loadingMoreRef: ${loadingMoreRef.current}, hasMore: ${hasMoreVal}`);
+      return;
+    }
     if (!isLoadMore && loadingRef.current && targetPage === 0) return;
 
     try {
@@ -453,7 +474,7 @@ export default function HomeScreen({ navigation }) {
         const filteredData = applyClientSideFilter(rawData, currentFilter, currentCategory);
         
         // Deduplicate with existing list and accumulated batch
-        const existingIds = new Set(isLoadMore ? mediaList.map(item => item.id) : []);
+        const existingIds = new Set(isLoadMore ? mediaListRef.current.map(item => item.id) : []);
         const newUniqueItems = filteredData.filter(
           item => !existingIds.has(item.id) && !accumulatedData.some(a => a.id === item.id)
         );
@@ -492,7 +513,7 @@ export default function HomeScreen({ navigation }) {
       setLoadingMore(false);
       loadingMoreRef.current = false;
     }
-  }, [activeFilter, activeCategory, hasMore, mediaList]);
+  }, [activeFilter, activeCategory]);
 
   // ─── Search ───────────────────────────────────────────────────────────────
 
@@ -551,7 +572,9 @@ export default function HomeScreen({ navigation }) {
   }, [searchQuery]);
 
   const loadSearchMore = useCallback(async (query, targetPage) => {
-    if (loadingMoreRef.current || !hasMore) return;
+    const hasMoreVal = hasMoreRef.current;
+    console.log(`[LoadMore] loadSearchMore triggered. query: "${query}", targetPage: ${targetPage}, loadingMoreRef: ${loadingMoreRef.current}, hasMore: ${hasMoreVal}`);
+    if (loadingMoreRef.current || !hasMoreVal) return;
     try {
       setLoadingMore(true);
       loadingMoreRef.current = true;
@@ -569,7 +592,7 @@ export default function HomeScreen({ navigation }) {
         }
 
         // Deduplicate with existing list and accumulated batch
-        const existingIds = new Set(mediaList.map(item => item.id));
+        const existingIds = new Set(mediaListRef.current.map(item => item.id));
         const newUniqueItems = data.filter(
           item => !existingIds.has(item.id) && !accumulatedData.some(a => a.id === item.id)
         );
@@ -600,17 +623,30 @@ export default function HomeScreen({ navigation }) {
       setLoadingMore(false);
       loadingMoreRef.current = false;
     }
-  }, [hasMore, mediaList]);
+  }, []);
 
   const handleLoadMore = useCallback(() => {
-    if (loading || loadingMore || !hasMore) return;
-    const nextPage = page + 1;
-    if (isSearching) {
-      loadSearchMore(searchQuery, nextPage);
-    } else {
-      loadTrendingData(nextPage, true, activeFilter, activeCategory);
+    const loadingVal = loading;
+    const loadingMoreVal = loadingMore;
+    const hasMoreVal = hasMoreRef.current;
+    const pageVal = pageRef.current;
+    const isSearchingVal = isSearchingRef.current;
+    const searchQueryVal = searchQueryRef.current;
+    const activeFilterVal = activeFilterRef.current;
+    const activeCategoryVal = activeCategoryRef.current;
+
+    console.log(`[LoadMore] handleLoadMore invoked. loading: ${loadingVal}, loadingMore: ${loadingMoreVal}, hasMore: ${hasMoreVal}, page: ${pageVal}, isSearching: ${isSearchingVal}`);
+    if (loadingVal || loadingMoreVal || !hasMoreVal) {
+      console.log(`[LoadMore] handleLoadMore ignored due to guards.`);
+      return;
     }
-  }, [loading, loadingMore, hasMore, page, isSearching, searchQuery, loadSearchMore, loadTrendingData, activeFilter, activeCategory]);
+    const nextPage = pageVal + 1;
+    if (isSearchingVal) {
+      loadSearchMore(searchQueryVal, nextPage);
+    } else {
+      loadTrendingData(nextPage, true, activeFilterVal, activeCategoryVal);
+    }
+  }, [loading, loadingMore, loadSearchMore, loadTrendingData]);
 
   // ─── Filter / Category Selection ─────────────────────────────────────────
 
