@@ -481,11 +481,6 @@ export default function HomeScreen({ navigation }) {
 
         accumulatedData = [...accumulatedData, ...newUniqueItems];
 
-        if (rawData.length < 30) {
-          setHasMore(false);
-          break;
-        }
-
         if (accumulatedData.length >= targetCount) {
           break;
         }
@@ -598,11 +593,6 @@ export default function HomeScreen({ navigation }) {
         );
 
         accumulatedData = [...accumulatedData, ...newUniqueItems];
-
-        if (data.length < 30) {
-          setHasMore(false);
-          break;
-        }
 
         if (accumulatedData.length >= targetCount) {
           break;
