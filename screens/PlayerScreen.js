@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { apiService } from '../services/apiService';
+import { AdBanner300x250 } from '../components/AdBanner';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -793,6 +794,7 @@ export default function PlayerScreen({ route, navigation }) {
           >
             <Text style={styles.dlBtnText}>⬇  Download Video</Text>
           </TouchableOpacity>
+          <AdBanner300x250 />
         </ScrollView>
       )}
 

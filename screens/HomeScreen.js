@@ -24,6 +24,7 @@ if (Platform.OS === 'android') {
 import { Image as ExpoImage } from 'expo-image';
 import { apiService } from '../services/apiService';
 import { Ionicons } from '@expo/vector-icons';
+import { AdBanner728x90 } from '../components/AdBanner';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -752,6 +753,8 @@ export default function HomeScreen({ navigation }) {
           </TouchableOpacity>
         )}
       </View>
+
+      <AdBanner728x90 />
 
       {/* Header Row with Filter Button */}
       <View style={styles.headerRow}>

@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { apiService } from '../services/apiService';
+import { AdBanner300x250 } from '../components/AdBanner';
 
 const { width } = Dimensions.get('window');
 
@@ -288,6 +289,7 @@ export default function DetailsScreen({ route, navigation }) {
 
         <Text style={styles.sectionTitle}>Overview</Text>
         <Text style={styles.description}>{details.description}</Text>
+        <AdBanner300x250 />
       </View>
     </ScrollView>
   );
