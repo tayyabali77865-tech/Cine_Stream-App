@@ -75,24 +75,6 @@ function detectLanguage(title) {
 }
 
 function getDisplayBadge(item, activeCategory) {
-  const countryLower = (item.country || '').toLowerCase();
-  const channelLower = (item.channel || '').toLowerCase();
-  const titleLower = (item.title || '').toLowerCase();
-  
-  if (
-    activeCategory === 'Anime' ||
-    countryLower === 'japan' ||
-    channelLower.includes('anime') ||
-    titleLower.includes('anime') ||
-    titleLower.includes('naruto') ||
-    titleLower.includes('boruto') ||
-    titleLower.includes('jujutsu') ||
-    titleLower.includes('one piece') ||
-    titleLower.includes('demon slayer')
-  ) {
-    return 'Anime';
-  }
-  
   const typeLower = (item.type || '').toLowerCase();
   if (typeLower === 'tv show' || typeLower === 'tv' || typeLower === 'series') {
     return 'TV Show';

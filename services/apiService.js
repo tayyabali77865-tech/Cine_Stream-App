@@ -26,6 +26,32 @@ const API_FALLBACKS = [
 const preferredBaseUrl = API_FALLBACKS[0] || 'http://localhost:8000/api';
 let activeBaseUrl = preferredBaseUrl;
 
+// ─── Netmirror Mirrors Manager (Client-side bypass) ───────────────────────────
+let activeNetmirrorMirror = 'https://api2.imdb3.shop/api';
+let allNetmirrorMirrors = ['https://api2.imdb3.shop/api', 'https://api2.imdb4.shop/api'];
+let mirrorsFetched = false;
+
+async function ensureNetmirrorMirrors() {
+  if (mirrorsFetched) return;
+  try {
+    const res = await customFetch('/mirrors');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.activeMirror) {
+        activeNetmirrorMirror = data.activeMirror;
+        allNetmirrorMirrors = data.mirrors || [data.activeMirror];
+        mirrorsFetched = true;
+        console.log(`🌐 Loaded active netmirror mirror: ${activeNetmirrorMirror}`);
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ Failed to load netmirror mirrors from backend, using fallbacks:', err.message);
+  }
+}
+
+// Start fetching mirrors in the background immediately
+ensureNetmirrorMirrors().catch(() => {});
+
 // ─── URL Cooldown Tracker ─────────────────────────────────────────────────────
 
 // Track failed URLs with cooldown (don't retry for 6 seconds)
@@ -224,11 +250,57 @@ export const apiService = {
     if (cached) return cached;
 
     return deduplicatedFetch(cacheKey, async () => {
-      const response = await customFetch(`/search?q=${encodeURIComponent(query)}&page=${page}`);
-      if (!response.ok) throw new Error('Backend failed to search.');
-      const data = await response.json();
-      searchCache.set(cacheKey, data);
-      return data;
+      const decodedQuery = decodeURIComponent(query);
+      const formattedQuery = encodeURIComponent(decodedQuery.trim()).replace(/%20/g, '+');
+
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://netmirror.center/',
+        'Origin': 'https://netmirror.center'
+      };
+
+      // Query all mirrors in parallel to get instant results
+      const promises = allNetmirrorMirrors.map(async (mirror) => {
+        const url = `${mirror}/search2/${formattedQuery}?page=${page}`;
+        try {
+          const response = await fetchWithTimeout(url, { headers }, 6000);
+          if (!response.ok) return [];
+          const rawData = await response.json();
+          if (rawData.message && rawData.message.includes('Access denied')) return [];
+          return rawData.results || [];
+        } catch (err) {
+          console.warn(`⚠️ Client Search parallel query failed on ${mirror}: ${err.message}`);
+          return [];
+        }
+      });
+
+      const allResultsArray = await Promise.all(promises);
+
+      // Merge and deduplicate results by media ID
+      const mergedResults = [];
+      const seenIds = new Set();
+      for (const results of allResultsArray) {
+        for (const item of results) {
+          if (!seenIds.has(item.id)) {
+            seenIds.add(item.id);
+            mergedResults.push(item);
+          }
+        }
+      }
+
+      const mediaList = mergedResults.map(item => ({
+        id: item.id,
+        title: item.title ? item.title.trim() : 'Unknown Title',
+        poster: item.backdrop_path || 'https://placehold.co/300x450',
+        type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
+        releaseDate: item.release_date || 'N/A',
+        country: item.cn || '',
+        channel: item.channel || '',
+        rating: parseFloat(item.vote_average) || 0
+      }));
+
+      searchCache.set(cacheKey, mediaList);
+      return mediaList;
     });
   },
 
@@ -242,11 +314,61 @@ export const apiService = {
     if (cached) return cached;
 
     return deduplicatedFetch(cacheKey, async () => {
-      const response = await customFetch(`/details/${id}`);
-      if (!response.ok) throw new Error('Backend failed to load media details.');
-      const data = await response.json();
-      detailsCache.set(cacheKey, data);
-      return data;
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://netmirror.center/',
+        'Origin': 'https://netmirror.center'
+      };
+
+      // Query all mirrors in parallel, first successful response wins
+      const promises = allNetmirrorMirrors.map(async (mirror) => {
+        const url = `${mirror}/movie/${id}`;
+        const response = await fetchWithTimeout(url, { headers }, 6000);
+        if (!response.ok) throw new Error(`HTTP status ${response.status}`);
+        const data = await response.json();
+        if (data.message && data.message.includes('Access denied')) {
+          throw new Error('Blocked by Imunify360');
+        }
+        const results = data.results || [];
+        if (results.length === 0) throw new Error('Details empty');
+        
+        // Track the working mirror
+        activeNetmirrorMirror = mirror;
+        return results[0];
+      });
+
+      try {
+        const item = await Promise.any(promises);
+
+        const alternateDubs = [];
+        const titleStr = item.title ? String(item.title) : 'Unknown Title';
+        const titleLower = titleStr.toLowerCase();
+        if (titleLower.includes('hindi')) alternateDubs.push('Hindi');
+        if (titleLower.includes('english')) alternateDubs.push('English');
+        if (titleLower.includes('tamil')) alternateDubs.push('Tamil');
+        if (titleLower.includes('telugu')) alternateDubs.push('Telugu');
+        if (alternateDubs.length === 0) alternateDubs.push('Original');
+
+        const hasValidSeasons = Array.isArray(item.season) && item.season.length > 0 && item.season.some(s => s && s.se > 0);
+        const mediaType = hasValidSeasons ? 'TV Show' : 'Movie';
+        const seasonsList = hasValidSeasons ? item.season : null;
+
+        const detailsData = {
+          id: item.id,
+          title: item.title ? item.title.trim() : 'Unknown Title',
+          description: item.dis || 'No description available.',
+          poster: item.backdrop_path || 'https://placehold.co/300x450',
+          type: mediaType,
+          seasons: seasonsList,
+          audioLanguages: alternateDubs,
+          _rawItem: item
+        };
+
+        detailsCache.set(cacheKey, detailsData);
+        return detailsData;
+      } catch (err) {
+        throw new Error('Failed to retrieve movie details from any mirror.');
+      }
     });
   },
 
@@ -256,8 +378,20 @@ export const apiService = {
    */
   async getStreamSources(id, season = 1, episode = 1, lang = 'Hindi') {
     try {
+      // Get raw item details to pass to backend
+      let details = detailsCache.get(`details:${id}`);
+      if (!details) {
+        details = await this.getMediaDetails(id);
+      }
+      const rawItem = details ? details._rawItem : null;
+
       const response = await customFetch(
-        `/stream/${id}?season=${season}&episode=${episode}&lang=${encodeURIComponent(lang)}`
+        `/stream/${id}?season=${season}&episode=${episode}&lang=${encodeURIComponent(lang)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item: rawItem })
+        }
       );
       if (!response.ok) throw new Error('Backend failed to load stream sources.');
       return await response.json();
@@ -273,8 +407,20 @@ export const apiService = {
    */
   async getDownloadQualities(id, season = '', episode = '', lang = 'Hindi') {
     try {
+      // Get raw item details to pass to backend
+      let details = detailsCache.get(`details:${id}`);
+      if (!details) {
+        details = await this.getMediaDetails(id);
+      }
+      const rawItem = details ? details._rawItem : null;
+
       const response = await customFetch(
-        `/download-qualities/${id}?season=${season}&episode=${episode}&lang=${encodeURIComponent(lang)}`
+        `/download-qualities/${id}?season=${season}&episode=${episode}&lang=${encodeURIComponent(lang)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item: rawItem })
+        }
       );
       if (!response.ok) throw new Error('Backend failed to fetch download qualities.');
       return await response.json();

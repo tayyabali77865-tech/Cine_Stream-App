@@ -422,7 +422,7 @@ app.get('/api/details/:id', async (req, res) => {
 /**
  * 4. Advanced Stream Resolver
  */
-app.get('/api/stream/:id', async (req, res) => {
+app.all('/api/stream/:id', async (req, res) => {
   const { id } = req.params;
   const se = req.query.season || '1';
   const ep = req.query.episode || '1';
@@ -452,15 +452,20 @@ app.get('/api/stream/:id', async (req, res) => {
       });
     }
 
-    console.log(`📡 Resolving stream for ID: ${id} (Season ${se}, Episode ${ep}, Lang ${lang})`);
-
-    const endpoint = `/movie/${id}`;
-    const { value: detailsData } = await detailsCache.get(endpoint);
-    const results = detailsData.results || [];
-    if (results.length === 0) {
-      throw new Error('Movie metadata not found.');
+    let item = null;
+    if (req.method === 'POST' && req.body && req.body.item) {
+      item = req.body.item;
+      console.log(`📦 Using client-provided metadata for ID: ${id}`);
+    } else {
+      console.log(`📡 Resolving stream for ID: ${id} (Season ${se}, Episode ${ep}, Lang ${lang})`);
+      const endpoint = `/movie/${id}`;
+      const { value: detailsData } = await detailsCache.get(endpoint);
+      const results = detailsData.results || [];
+      if (results.length === 0) {
+        throw new Error('Movie metadata not found.');
+      }
+      item = results[0];
     }
-    let item = results[0];
 
     let resolvedVideoUrl = null;
     let resolvedQualities = [];
@@ -666,7 +671,7 @@ app.get('/api/stream/:id', async (req, res) => {
  * the watchbox player HTML for div.dl-item entries (e.g. "720P 764.2MB" + CDN URL).
  * Falls back to embed s= size param for drivehub-style single-quality items.
  */
-app.get('/api/download-qualities/:id', async (req, res) => {
+app.all('/api/download-qualities/:id', async (req, res) => {
   const { id } = req.params;
   const se = req.query.season || '';
   const ep = req.query.episode || '';
@@ -681,16 +686,21 @@ app.get('/api/download-qualities/:id', async (req, res) => {
       return res.json({ qualities: customLinks, referer: '' });
     }
 
-    console.log(`🔍 Fetching download qualities for ID: ${id} (S${se}E${ep} lang=${lang})`);
-
-    const endpoint = `/movie/${id}`;
-    const { value: detailsData } = await detailsCache.get(endpoint);
-    const results = detailsData.results || [];
-    if (results.length === 0) {
-      return res.status(404).json({ error: 'Media not found.' });
+    let item = null;
+    if (req.method === 'POST' && req.body && req.body.item) {
+      item = req.body.item;
+      console.log(`📦 Using client-provided download qualities metadata for ID: ${id}`);
+    } else {
+      console.log(`🔍 Fetching download qualities for ID: ${id} (S${se}E${ep} lang=${lang})`);
+      const endpoint = `/movie/${id}`;
+      const { value: detailsData } = await detailsCache.get(endpoint);
+      const results = detailsData.results || [];
+      if (results.length === 0) {
+        return res.status(404).json({ error: 'Media not found.' });
+      }
+      item = results[0];
     }
 
-    let item = results[0];
     let targetId = id;
     let targetSe = se;
     let targetEp = ep;
@@ -1130,6 +1140,14 @@ app.delete('/api/reported-errors/:id', async (req, res) => {
 
   await db.removeReportedError(id);
   res.json({ success: true, message: `Reported error for ID ${id} cleared.` });
+});
+
+// Get active mirrors
+app.get('/api/mirrors', (req, res) => {
+  res.json({
+    activeMirror: mirrorManager.getActiveMirror(),
+    mirrors: mirrorManager.mirrors
+  });
 });
 
 // Telemetry & Health endpoint
