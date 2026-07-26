@@ -36,6 +36,9 @@
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_MEDIA_LOCATION",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.ACCESS_MEDIA_LOCATION"
       ]
     },
@@ -49,6 +52,12 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/1a99f29d-aeac-4689-a694-afb2351a6083"
     }
   }
 }
