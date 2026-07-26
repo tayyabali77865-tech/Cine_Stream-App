@@ -812,7 +812,7 @@ async function extractWatchboxQualities(id, se, ep, dp, na, clientIp = null) {
     const baseUrl = `https://${domain}/play/watchbox.php?id=${id}&se=${se}&ep=${ep}&dp=${dp}&na=${encodeURIComponent(na)}&exten=1`;
     const dummyRes = await axios.get(`${baseUrl}&ts=0&sig=0`, {
       headers: getHeaders(netmirrorReferer, clientIp),
-      timeout: 2500
+      timeout: 6000
     });
 
     const timeMatch = dummyRes.data.match(/Time not Found\.<br><br>(\d+)/);
@@ -822,7 +822,7 @@ async function extractWatchboxQualities(id, se, ep, dp, na, clientIp = null) {
     const signature = crypto.createHmac('sha256', HM_SECRET).update(String(serverTime)).digest('hex');
     const authRes = await axios.get(`${baseUrl}&ts=${serverTime}&sig=${signature}`, {
       headers: getHeaders(netmirrorReferer, clientIp),
-      timeout: 3000
+      timeout: 6000
     });
     const html = authRes.data;
 
@@ -925,7 +925,7 @@ async function resolveWatchboxStream(id, se, ep, dp, na, clientIp = null) {
 
       const dummyRes = await axios.get(dummyUrl, {
         headers: getHeaders(netmirrorReferer, clientIp),
-        timeout: 2500
+        timeout: 6000
       });
 
       let serverTime = null;
@@ -939,7 +939,7 @@ async function resolveWatchboxStream(id, se, ep, dp, na, clientIp = null) {
 
         const authRes = await axios.get(authUrl, {
           headers: getHeaders(netmirrorReferer, clientIp),
-          timeout: 3000
+          timeout: 6000
         });
         htmlContent = authRes.data;
       } else {
