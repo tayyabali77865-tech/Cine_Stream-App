@@ -513,6 +513,18 @@ export default function HomeScreen({ navigation }) {
       console.log(`[Search] Triggering search API for query: "${trimmed}"`);
       const data = await apiService.searchMedia(trimmed, 0);
       console.log(`[Search] API returned ${data.length} results`);
+
+      // ✅ Discard results if the search query was cleared or changed in-flight
+      const currentQuery = searchQueryRef.current.trim();
+      if (currentQuery === '') {
+        console.log(`[Search] Query was cleared in-flight. Discarding results.`);
+        return;
+      }
+      if (currentQuery !== trimmed) {
+        console.log(`[Search] Query changed to "${currentQuery}" in-flight. Discarding results for "${trimmed}".`);
+        return;
+      }
+
       setMediaList(makeUnique(data)); // Directly render original search results from API
       setPage(0);
     } catch (e) {
