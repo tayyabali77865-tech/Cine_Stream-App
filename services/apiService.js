@@ -173,7 +173,7 @@ async function customFetch(endpoint, options = {}) {
   // 1. Try activeBaseUrl first (skip if on cooldown)
   if (!isUrlOnCooldown(activeBaseUrl)) {
     try {
-      const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 15000);
+      const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 25000);
       // The server responded! Return the response directly (even if 4xx or 5xx) since the server is online.
       return response;
     } catch (err) {
@@ -205,7 +205,7 @@ async function customFetch(endpoint, options = {}) {
       const workingUrl = await Promise.any(scanPromises);
       activeBaseUrl = workingUrl;
       console.log(`🎯 Switched to: ${activeBaseUrl}`);
-      const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 15000);
+      const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 25000);
       return response;
     } catch (_) {
       // All failed
