@@ -76,7 +76,7 @@ const searchCache = new LRUCacheWithSWR({
 // ─── Stream Cache ─────────────────────────────────────────────────────────────
 const streamCache = new LRUCacheWithSWR({
   capacity: parseInt(process.env.CACHE_STREAM_CAPACITY || '50'),
-  ttlMs: parseInt(process.env.CACHE_STREAM_TTL_MS || '0'), // Disabled by default because stream URLs are session-specific and expire quickly
+  ttlMs: parseInt(process.env.CACHE_STREAM_TTL_MS || '120000'), // 2 minutes cache to avoid CDN link expiry while preventing consecutive fetch blocking
   swrMs: parseInt(process.env.CACHE_STREAM_SWR_MS || '0'),
   fetchFn: async (key) => {
     // Stream cache ke liye fetchFn use nahi hoti — manually set karte hain
@@ -437,7 +437,7 @@ app.all('/api/stream/:id', async (req, res) => {
     const cacheKey = `${id}:${se}:${ep}:${lang}`;
 
     // ✅ Check streamCache first — avoid re-resolving for same stream if cache is enabled
-    const cacheTtl = parseInt(process.env.CACHE_STREAM_TTL_MS || '0');
+    const cacheTtl = parseInt(process.env.CACHE_STREAM_TTL_MS || '120000');
     const cachedEntry = streamCache.cache.get(cacheKey);
     if (cacheTtl > 0 && cachedEntry && (Date.now() - cachedEntry.fetchedAt) < cacheTtl) {
       console.log(`⚡ [StreamCache] HIT for key: ${cacheKey}`);
