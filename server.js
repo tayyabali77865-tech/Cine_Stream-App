@@ -1,4 +1,7 @@
 require('dotenv').config();
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '8.8.4.4']); // Bypass local ISP DNS SRV record blocking
+
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
