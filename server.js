@@ -73,8 +73,8 @@ const searchCache = new LRUCacheWithSWR({
 // ─── Stream Cache ─────────────────────────────────────────────────────────────
 const streamCache = new LRUCacheWithSWR({
   capacity: parseInt(process.env.CACHE_STREAM_CAPACITY || '50'),
-  ttlMs: parseInt(process.env.CACHE_STREAM_TTL_MS || '600000'),
-  swrMs: parseInt(process.env.CACHE_STREAM_SWR_MS || '300000'),
+  ttlMs: parseInt(process.env.CACHE_STREAM_TTL_MS || '0'), // Disabled by default because stream URLs are session-specific and expire quickly
+  swrMs: parseInt(process.env.CACHE_STREAM_SWR_MS || '0'),
   fetchFn: async (key) => {
     // Stream cache ke liye fetchFn use nahi hoti — manually set karte hain
     return null;
@@ -412,6 +412,7 @@ app.get('/api/details/:id', async (req, res) => {
       type: mediaType,
       seasons: seasonsList,
       audioLanguages: alternateDubs,
+      trailer: item.trailer || null,
     });
   } catch (error) {
     console.error(`Error fetching details for ID ${id}:`, error.message);
@@ -432,9 +433,10 @@ app.all('/api/stream/:id', async (req, res) => {
   try {
     const cacheKey = `${id}:${se}:${ep}:${lang}`;
 
-    // ✅ Check streamCache first — avoid re-resolving for same stream
+    // ✅ Check streamCache first — avoid re-resolving for same stream if cache is enabled
+    const cacheTtl = parseInt(process.env.CACHE_STREAM_TTL_MS || '0');
     const cachedEntry = streamCache.cache.get(cacheKey);
-    if (cachedEntry && (Date.now() - cachedEntry.fetchedAt) < parseInt(process.env.CACHE_STREAM_TTL_MS || '600000')) {
+    if (cacheTtl > 0 && cachedEntry && (Date.now() - cachedEntry.fetchedAt) < cacheTtl) {
       console.log(`⚡ [StreamCache] HIT for key: ${cacheKey}`);
       res.setHeader('X-Cache-Status', 'HIT');
       return res.json(cachedEntry.value);
@@ -654,8 +656,10 @@ app.all('/api/stream/:id', async (req, res) => {
       referer: REFERER_URL
     };
 
-    // ✅ Cache the resolved stream to avoid re-resolving for 10 minutes
-    streamCache.set(cacheKey, streamResult);
+    // ✅ Cache the resolved stream only if cache TTL is enabled (greater than 0)
+    if (cacheTtl > 0) {
+      streamCache.set(cacheKey, streamResult);
+    }
     console.log(`🔥 Resolved final streaming file: ${resolvedVideoUrl}`);
     res.setHeader('X-Cache-Status', 'MISS');
     res.json(streamResult);

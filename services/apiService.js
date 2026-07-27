@@ -361,6 +361,7 @@ export const apiService = {
           type: mediaType,
           seasons: seasonsList,
           audioLanguages: alternateDubs,
+          trailer: item.trailer || null,
           _rawItem: item
         };
 

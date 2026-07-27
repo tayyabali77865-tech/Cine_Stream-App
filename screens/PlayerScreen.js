@@ -185,10 +185,13 @@ export default function PlayerScreen({ route, navigation }) {
       : title)
     : 'Video';
 
-  // ── Mount / Unmount ───────────────────────────────────────────────────────
+  // ── Load stream on parameters change ──────────────────────────────────────
   useEffect(() => {
     loadStream();
+  }, [loadStream]);
 
+  // ── Mount / Unmount ───────────────────────────────────────────────────────
+  useEffect(() => {
     // Unlock auto rotation only for this screen
     ScreenOrientation.unlockAsync().catch((err) => {
       console.warn('Could not unlock screen orientation:', err);
@@ -655,6 +658,24 @@ export default function PlayerScreen({ route, navigation }) {
           {isBuffering && (
             <View style={styles.bufferingOverlay}>
               <ActivityIndicator size="large" color="#E50914" />
+            </View>
+          )}
+
+          {/* ── Fullscreen Pause Ad Overlay ── */}
+          {isFullscreen && playbackStatus && !playbackStatus.isPlaying && !playbackStatus.isBuffering && (
+            <View style={styles.fullscreenAdOverlay}>
+              <View style={styles.fullscreenAdCard}>
+                <Text style={styles.adTitle}>Sponsored Ad</Text>
+                <AdBanner300x250 />
+                <TouchableOpacity 
+                  style={styles.adResumeBtn} 
+                  onPress={async () => {
+                    if (videoRef.current) await videoRef.current.playAsync();
+                  }}
+                >
+                  <Text style={styles.adResumeBtnText}>Resume Video</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
 
@@ -1202,4 +1223,41 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)',
   },
   ctrlText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
+  fullscreenAdOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 99,
+  },
+  fullscreenAdCard: {
+    backgroundColor: '#0F0F13',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  adTitle: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 10,
+  },
+  adResumeBtn: {
+    backgroundColor: '#E50914',
+    borderRadius: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    marginTop: 14,
+    width: '100%',
+    alignItems: 'center',
+  },
+  adResumeBtnText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
 });

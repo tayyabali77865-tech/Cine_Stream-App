@@ -12,6 +12,8 @@ import {
 import { Image as ExpoImage } from 'expo-image';
 import { apiService } from '../services/apiService';
 import { AdBanner300x250 } from '../components/AdBanner';
+import { Video, ResizeMode } from 'expo-av';
+import { Ionicons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 
@@ -47,6 +49,15 @@ export default function DetailsScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [selectedSeason, setSelectedSeason] = useState(null);
   const [showSeasonDropdown, setShowSeasonDropdown] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showSeeMore, setShowSeeMore] = useState(false);
+
+  const handleTextLayout = useCallback((e) => {
+    if (e.nativeEvent.lines.length > 5) {
+      setShowSeeMore(true);
+    }
+  }, []);
 
   // ── Animated values as refs — no extra state slot, stops on unmount ──────
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
@@ -88,6 +99,7 @@ export default function DetailsScreen({ route, navigation }) {
         const data = await apiService.getMediaDetails(id);
         if (cancelled) return;
         setDetails(data);
+        console.log('[DetailsScreen] Loaded details trailer:', data ? data.trailer : 'no data');
         if (data && data.seasons && data.seasons.length > 0) {
           setSelectedSeason(data.seasons[0]);
         }
@@ -190,15 +202,49 @@ export default function DetailsScreen({ route, navigation }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      {/* Poster Image */}
+      {/* Trailer Video Player instead of Poster Image */}
       <View style={styles.posterContainer}>
-        <ExpoImage
-          source={{ uri: details.poster }}
-          style={styles.poster}
-          contentFit="cover"
-          transition={250}
-          cachePolicy="memory-disk"
-        />
+        {details.trailer ? (
+          <>
+            <Video
+              source={{
+                uri: details.trailer,
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                  'Referer': 'https://netmirror.global/'
+                }
+              }}
+              style={styles.poster}
+              resizeMode={ResizeMode.COVER}
+              shouldPlay={true}
+              isMuted={isMuted}
+              isLooping={true}
+              useNativeControls={false}
+              onError={(err) => console.warn('[DetailsScreen] Trailer load error:', err)}
+            />
+            {/* Red Trailer Badge */}
+            <View style={styles.trailerBadge}>
+              <Text style={styles.trailerBadgeText}>TRAILER</Text>
+            </View>
+            {/* Sound Toggle Overlay Button */}
+            <TouchableOpacity
+              style={styles.soundButton}
+              activeOpacity={0.7}
+              onPress={() => setIsMuted(prev => !prev)}
+            >
+              <Ionicons
+                name={isMuted ? "volume-mute" : "volume-high"}
+                size={18}
+                color="#FFF"
+              />
+            </TouchableOpacity>
+          </>
+        ) : (
+          <View style={styles.noTrailerContainer}>
+            <Ionicons name="videocam-off-outline" size={48} color="#4B5563" />
+            <Text style={styles.noTrailerText}>Trailer not found</Text>
+          </View>
+        )}
         <View style={styles.overlay} />
       </View>
 
@@ -288,7 +334,24 @@ export default function DetailsScreen({ route, navigation }) {
         )}
 
         <Text style={styles.sectionTitle}>Overview</Text>
-        <Text style={styles.description}>{details.description}</Text>
+        <Text
+          style={styles.description}
+          numberOfLines={isExpanded ? undefined : 5}
+          onTextLayout={handleTextLayout}
+        >
+          {details.description}
+        </Text>
+        {showSeeMore && (
+          <TouchableOpacity
+            style={styles.seeMoreBtn}
+            onPress={() => setIsExpanded(prev => !prev)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.seeMoreText}>
+              {isExpanded ? 'View Less' : 'View More'}
+            </Text>
+          </TouchableOpacity>
+        )}
         <AdBanner300x250 />
       </View>
     </ScrollView>
@@ -307,7 +370,7 @@ const styles = StyleSheet.create({
   },
   posterContainer: {
     width: width,
-    height: width * 0.9,
+    height: width * 0.56, // 16:9 aspect ratio
     position: 'relative',
     backgroundColor: '#15151A',
   },
@@ -321,11 +384,9 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingHorizontal: 20,
-    marginTop: -40,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    marginTop: 0, // Removed overlapping negative margin
     backgroundColor: '#09090C',
-    paddingTop: 30,
+    paddingTop: 20, // Adjusted padding to fit nicely below trailer
     zIndex: 1,
   },
   title: {
@@ -506,5 +567,57 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: '#16161A',
     marginRight: 10,
+  },
+  noTrailerContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#15151A',
+  },
+  noTrailerText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  soundButton: {
+    position: 'absolute',
+    bottom: 12, // Adjusted placement coordinate since overlap is removed
+    right: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  trailerBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    backgroundColor: '#E50914',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    zIndex: 10,
+  },
+  trailerBadgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  seeMoreBtn: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+  },
+  seeMoreText: {
+    color: '#E50914',
+    fontSize: 14,
+    fontWeight: '700',
   }
 });
