@@ -1,0 +1,28 @@
+# Ignore build artifacts and caches
+.expo/
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+
+# Ignore web builds and extension files
+dist/
+extension_files/
+netmirror_extension.zip
+netmirror_extension.crx
+
+# Ignore scratch files and HTML dumps
+scratch/
+check_trailer.js
+watchbox_dump.html
+watchdrivehub_global.html
+wdh_dump.html
+find_movie_route.js
+find_ud.js
+search_human.js
+analyze_search.js
+
+# Ignore environment variables
+.env
+.env.local
+.env.production
