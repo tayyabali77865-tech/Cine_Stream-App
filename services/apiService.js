@@ -174,7 +174,11 @@ async function customFetch(endpoint, options = {}) {
   if (!isUrlOnCooldown(activeBaseUrl)) {
     try {
       const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 15000);
-      if (response.ok) return response;
+      // If the server responded, it is active. Return response directly (even if 4xx)
+      if (response.ok || response.status < 500) {
+        return response;
+      }
+      // Only mark as failed if it returned a 5xx crash error
       markUrlFailed(activeBaseUrl);
     } catch (err) {
       markUrlFailed(activeBaseUrl);
@@ -206,7 +210,7 @@ async function customFetch(endpoint, options = {}) {
       activeBaseUrl = workingUrl;
       console.log(`🎯 Switched to: ${activeBaseUrl}`);
       const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 15000);
-      if (response.ok) return response;
+      if (response.ok || response.status < 500) return response;
     } catch (_) {
       // All failed
     }
