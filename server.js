@@ -1,6 +1,10 @@
 require('dotenv').config();
-const dns = require('dns');
-dns.setServers(['8.8.8.8', '8.8.4.4']); // Bypass local ISP DNS SRV record blocking
+
+// Bypass local ISP DNS SRV record blocking ONLY in local development
+if (process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_STATIC_URL) {
+  const dns = require('dns');
+  dns.setServers(['8.8.8.8', '8.8.4.4']);
+}
 
 const express = require('express');
 const cors = require('cors');
