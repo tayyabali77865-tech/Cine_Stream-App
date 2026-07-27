@@ -1,4 +1,13 @@
 const mongoose = require('mongoose');
+const dns = require('dns');
+
+// Force DNS resolution to use Google & Cloudflare public DNS (fixes querySrv ECONNREFUSED on local routers)
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+  console.log('[DNS] ✅ Public DNS servers configured (8.8.8.8, 1.1.1.1)');
+} catch (err) {
+  console.warn('[DNS] ⚠️ Failed to override process DNS servers:', err.message);
+}
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
