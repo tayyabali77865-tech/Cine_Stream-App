@@ -1,11 +1,4 @@
 require('dotenv').config();
-
-// Bypass local ISP DNS SRV record blocking ONLY in local development
-if (process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_STATIC_URL) {
-  const dns = require('dns');
-  dns.setServers(['8.8.8.8', '8.8.4.4']);
-}
-
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
@@ -80,7 +73,7 @@ const searchCache = new LRUCacheWithSWR({
 // ─── Stream Cache ─────────────────────────────────────────────────────────────
 const streamCache = new LRUCacheWithSWR({
   capacity: parseInt(process.env.CACHE_STREAM_CAPACITY || '50'),
-  ttlMs: parseInt(process.env.CACHE_STREAM_TTL_MS || '120000'), // 2 minutes cache to avoid CDN link expiry while preventing consecutive fetch blocking
+  ttlMs: parseInt(process.env.CACHE_STREAM_TTL_MS || '0'), // Disabled by default because stream URLs are session-specific and expire quickly
   swrMs: parseInt(process.env.CACHE_STREAM_SWR_MS || '0'),
   fetchFn: async (key) => {
     // Stream cache ke liye fetchFn use nahi hoti — manually set karte hain
@@ -441,7 +434,7 @@ app.all('/api/stream/:id', async (req, res) => {
     const cacheKey = `${id}:${se}:${ep}:${lang}`;
 
     // ✅ Check streamCache first — avoid re-resolving for same stream if cache is enabled
-    const cacheTtl = parseInt(process.env.CACHE_STREAM_TTL_MS || '120000');
+    const cacheTtl = parseInt(process.env.CACHE_STREAM_TTL_MS || '0');
     const cachedEntry = streamCache.cache.get(cacheKey);
     if (cacheTtl > 0 && cachedEntry && (Date.now() - cachedEntry.fetchedAt) < cacheTtl) {
       console.log(`⚡ [StreamCache] HIT for key: ${cacheKey}`);

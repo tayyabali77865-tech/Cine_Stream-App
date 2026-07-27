@@ -14,7 +14,6 @@ import { apiService } from '../services/apiService';
 import { AdBanner300x250 } from '../components/AdBanner';
 import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
-import { useIsFocused } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
@@ -46,7 +45,6 @@ const EpisodeButton = memo(({ epNum, onPress }) => (
 
 export default function DetailsScreen({ route, navigation }) {
   const { id } = route.params;
-  const isFocused = useIsFocused();
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedSeason, setSelectedSeason] = useState(null);
@@ -209,16 +207,16 @@ export default function DetailsScreen({ route, navigation }) {
         {details.trailer ? (
           <>
             <Video
-              source={isFocused ? {
+              source={{
                 uri: details.trailer,
                 headers: {
                   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                   'Referer': 'https://netmirror.global/'
                 }
-              } : null}
+              }}
               style={styles.poster}
               resizeMode={ResizeMode.COVER}
-              shouldPlay={isFocused}
+              shouldPlay={true}
               isMuted={isMuted}
               isLooping={true}
               useNativeControls={false}
