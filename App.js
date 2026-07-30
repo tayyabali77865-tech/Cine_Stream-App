@@ -7,6 +7,7 @@ import { enableScreens } from 'react-native-screens';
 import HomeScreen from './screens/HomeScreen';
 import DetailsScreen from './screens/DetailsScreen';
 import PlayerScreen from './screens/PlayerScreen';
+import { BackgroundAdHandler } from './components/AdBanner';
 
 // Enable native screen containers
 enableScreens(true);
@@ -73,28 +74,31 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        initialRouteName="Home"
-        screenOptions={NAVIGATOR_SCREEN_OPTIONS}
-      >
-        <Stack.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="Details"
-          component={DetailsScreen}
-          options={{ title: 'Media Info' }}
-        />
-        <Stack.Screen
-          name="Player"
-          component={PlayerScreen}
-          options={{ headerShown: false }}
-        />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <>
+      <NavigationContainer>
+        <Stack.Navigator
+          initialRouteName="Home"
+          screenOptions={NAVIGATOR_SCREEN_OPTIONS}
+        >
+          <Stack.Screen
+            name="Home"
+            component={HomeScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Details"
+            component={DetailsScreen}
+            options={{ title: 'Media Info' }}
+          />
+          <Stack.Screen
+            name="Player"
+            component={PlayerScreen}
+            options={{ headerShown: false }}
+          />
+        </Stack.Navigator>
+      </NavigationContainer>
+      <BackgroundAdHandler />
+    </>
   );
 }
 
