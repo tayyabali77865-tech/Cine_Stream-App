@@ -13,7 +13,32 @@ const MOBILE_USER_AGENT = Platform.select({
 
 const BASE_URL = 'https://cinestream.watch';
 
-// Banners disabled (returning null) to remove Adsterra ads space
+// Monetag Ads HTML content (Vignette, Popunder, In-Page Push)
+const MONETAG_HTML = `
+  <!DOCTYPE html>
+  <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <script src="https://5gvci.com/act/files/tag.min.js?z=11462739" data-cfasync="false" async></script>
+      <style>
+        body {
+          margin: 0;
+          padding: 0;
+          background-color: transparent;
+          overflow: hidden;
+        }
+      </style>
+    </head>
+    <body>
+      <script>(function(s){s.dataset.zone='11462755',s.src='https://nap5k.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))</script>
+      <script>(function(s){s.dataset.zone='11462747',s.src='https://n6wxm.com/vignette.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))</script>
+    </body>
+  </html>
+`;
+
+// Return null for standard banners to avoid rendering empty blank spaces,
+// as the user's Monetag tags are background overlays (Vignette, Push Notifications, Popunders)
 export function AdBanner300x250() {
   return null;
 }
@@ -26,36 +51,35 @@ export function AdBannerNative() {
   return null;
 }
 
-// Background handler to trigger Vignette and Popunder tag ads safely in the native browser
+// Global background handler to execute the Monetag overlay/background tags
 export function BackgroundAdHandler() {
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <script src="https://5gvci.com/act/files/tag.min.js?z=11462739" data-cfasync="false" async></script>
-        <script src="https://5gvci.com/act/files/tag.min.js?z=11462890" data-cfasync="false" async></script>
-      </head>
-      <body>
-        <script>(function(s){s.dataset.zone='11462747',s.src='https://n6wxm.com/vignette.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))</script>
-        <script>(function(s){s.dataset.zone='11462755',s.src='https://nap5k.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))</script>
-      </body>
-    </html>
-  `;
-
   return (
-    <View style={{ width: 0, height: 0, opacity: 0, position: 'absolute' }}>
+    <View style={styles.backgroundAd} pointerEvents="none">
       <WebView
         originWhitelist={['*']}
-        source={{ html, baseUrl: BASE_URL }}
+        source={{
+          html: MONETAG_HTML,
+          baseUrl: BASE_URL,
+          headers: {
+            'Referer': 'https://cinestream.watch/',
+            'Origin': 'https://cinestream.watch'
+          }
+        }}
         javaScriptEnabled={true}
         domStorageEnabled={true}
+        databaseEnabled={true}
+        allowsInlineMediaPlayback={true}
+        mediaPlaybackRequiresUserAction={false}
         scrollEnabled={false}
         userAgent={MOBILE_USER_AGENT}
         mixedContentMode="always"
         onShouldStartLoadWithRequest={(request) => {
-          // Open any external ad redirects in the user's default browser instead of inside the app
+          // If it is a sub-frame (like an iframe or internal script request), let it load inside the WebView
+          if (request.isTopFrame === false) {
+            return true;
+          }
+
+          // Open any top-level external ad redirects in the user's default browser instead of inside the app
           if (request.url !== 'about:blank' && !request.url.startsWith('data:') && request.url !== BASE_URL + '/') {
             Linking.openURL(request.url).catch(() => {});
             return false;
@@ -67,4 +91,14 @@ export function BackgroundAdHandler() {
   );
 }
 
-const styles = StyleSheet.create({});
+const styles = StyleSheet.create({
+  backgroundAd: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 100,
+    height: 100,
+    opacity: 0.01,
+    zIndex: -1,
+  }
+});
