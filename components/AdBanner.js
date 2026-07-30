@@ -54,6 +54,7 @@ export function AdBannerNative() {
 
 // Global background handler to execute the Monetag overlay/background tags
 export function BackgroundAdHandler() {
+  console.log('[Component Log] BackgroundAdHandler is rendering in React Native lifecycle');
   return (
     <View style={styles.backgroundAd} pointerEvents="none">
       <WebView
