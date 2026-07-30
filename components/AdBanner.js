@@ -20,6 +20,7 @@ const MONETAG_HTML = `
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <script>console.log("Ad WebView: HTML injected successfully and JS is running!");</script>
       <script src="https://5gvci.com/act/files/tag.min.js?z=11462739" data-cfasync="false" async></script>
       <style>
         body {
