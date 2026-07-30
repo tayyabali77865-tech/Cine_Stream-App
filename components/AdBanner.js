@@ -73,6 +73,15 @@ export function BackgroundAdHandler() {
         scrollEnabled={false}
         userAgent={MOBILE_USER_AGENT}
         mixedContentMode="always"
+        onConsoleMessage={(event) => {
+          console.log('[Ad WebView Console]', event.nativeEvent.message);
+        }}
+        onError={(syntheticEvent) => {
+          console.warn('[Ad WebView Error]', syntheticEvent.nativeEvent);
+        }}
+        onHttpError={(syntheticEvent) => {
+          console.warn('[Ad WebView HTTP Error]', syntheticEvent.nativeEvent.statusCode, syntheticEvent.nativeEvent.description);
+        }}
         onShouldStartLoadWithRequest={(request) => {
           // If it is a sub-frame (like an iframe or internal script request), let it load inside the WebView
           if (request.isTopFrame === false) {
