@@ -255,20 +255,20 @@ app.get('/api/trending', async (req, res) => {
   const cacheKey = `${category}_${filter}_${page}`;
 
   try {
-    let queryParams = 'sort_by=date&dubbing=Hindi';
+    let queryParams = 'sort_by=date';
 
     if (filter === 'Trending') {
-      queryParams = 'sort_by=date&dubbing=Hindi';
+      queryParams = 'sort_by=date';
     } else if (filter === 'Hollywood') {
-      queryParams = 'sort_by=date&dubbing=Hindi&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
+      queryParams = 'sort_by=date&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
     } else if (filter === 'Bollywood') {
-      queryParams = 'sort_by=date&dubbing=Hindi&country=india';
+      queryParams = 'sort_by=date&country=india';
     } else if (filter === 'Korean') {
       queryParams = 'sort_by=date&country=Korea';
     } else if (filter === 'Chinese') {
       queryParams = 'sort_by=date&country=China';
     } else if (filter === 'South Indian') {
-      queryParams = 'sort_by=date&dubbing=Tamil';
+      queryParams = 'sort_by=date';
     }
 
     if (category === 'Anime') {
@@ -1199,10 +1199,10 @@ app.listen(PORT, '0.0.0.0', async () => {
   // Background Warmup
   console.log('[Warmup] Initializing background cache pre-fetch...');
   const warmupEndpoints = [
-    '/movies/filter?sort_by=date&dubbing=Hindi&items_per_page=30&page=0', // Latest All Page 0
+    '/movies/filter?sort_by=date&items_per_page=30&page=0', // Latest All Page 0
     '/movies/filter?sort_by=date&country=Japan&items_per_page=30&page=0', // Anime Page 0
-    '/movies/filter?sort_by=date&dubbing=Hindi&type=1&items_per_page=30&page=0', // Movies Latest
-    '/movies/filter?sort_by=date&dubbing=Hindi&type=2&items_per_page=30&page=0'  // TV Shows Latest
+    '/movies/filter?sort_by=date&type=1&items_per_page=30&page=0', // Movies Latest
+    '/movies/filter?sort_by=date&type=2&items_per_page=30&page=0'  // TV Shows Latest
   ];
 
   for (const endpoint of warmupEndpoints) {

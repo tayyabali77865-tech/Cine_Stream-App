@@ -661,23 +661,7 @@ export default function PlayerScreen({ route, navigation }) {
             </View>
           )}
 
-          {/* ── Fullscreen Pause Ad Overlay ── */}
-          {isFullscreen && playbackStatus && !playbackStatus.isPlaying && !playbackStatus.isBuffering && (
-            <View style={styles.fullscreenAdOverlay}>
-              <View style={styles.fullscreenAdCard}>
-                <Text style={styles.adTitle}>Sponsored Ad</Text>
-                <AdBanner300x250 />
-                <TouchableOpacity 
-                  style={styles.adResumeBtn} 
-                  onPress={async () => {
-                    if (videoRef.current) await videoRef.current.playAsync();
-                  }}
-                >
-                  <Text style={styles.adResumeBtnText}>Resume Video</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
+
 
           {/* ── Custom HUD Controls Overlay ── */}
           {controlsVisible && (

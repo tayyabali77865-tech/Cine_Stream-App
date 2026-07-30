@@ -14,6 +14,7 @@ import { apiService } from '../services/apiService';
 import { AdBanner300x250 } from '../components/AdBanner';
 import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
+import { useIsFocused } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
@@ -44,6 +45,7 @@ const EpisodeButton = memo(({ epNum, onPress }) => (
 // ─── Details Screen ───────────────────────────────────────────────────────────
 
 export default function DetailsScreen({ route, navigation }) {
+  const isFocused = useIsFocused();
   const { id } = route.params;
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -216,7 +218,7 @@ export default function DetailsScreen({ route, navigation }) {
               }}
               style={styles.poster}
               resizeMode={ResizeMode.COVER}
-              shouldPlay={true}
+              shouldPlay={isFocused}
               isMuted={isMuted}
               isLooping={true}
               useNativeControls={false}

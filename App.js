@@ -66,7 +66,7 @@ export default function App() {
           <Text style={styles.appTitle}>
             <Text style={{ color: '#E50914' }}>Cine</Text>Stream
           </Text>
-          <Text style={styles.madeByText}>Made By Bilawal</Text>
+          <Text style={styles.madeByText}>Made By Tayyab</Text>
           <ActivityIndicator size="small" color="#E50914" style={{ marginTop: 24 }} />
         </Animated.View>
       </View>
@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   appTitle: {
-    fontSize: 42,
+    fontSize: 34,
     fontWeight: '900',
     color: '#F3F4F6',
     letterSpacing: 2,

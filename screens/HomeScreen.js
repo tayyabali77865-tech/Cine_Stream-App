@@ -221,38 +221,7 @@ function getStringSimilarity(title, query) {
 }
 
 function sortMediaList(list, isSearchActive, queryOrFilter) {
-  if (isSearchActive && queryOrFilter) {
-    return [...list].sort((a, b) => {
-      const simA = getStringSimilarity(a.title, queryOrFilter);
-      const simB = getStringSimilarity(b.title, queryOrFilter);
-      
-      // Descending order of similarity (100% match, then 99%, then 98% etc.)
-      if (simB !== simA) return simB - simA;
-      
-      // Fallback to rating if similarity is exactly equal
-      const ratingA = parseFloat(a.rating) || 0;
-      const ratingB = parseFloat(b.rating) || 0;
-      return ratingB - ratingA;
-    });
-  }
-
-  return [...list].sort((a, b) => {
-    // Always sort by rating first (highest first)
-    const ratingA = parseFloat(a.rating) || 0;
-    const ratingB = parseFloat(b.rating) || 0;
-    if (ratingB !== ratingA) return ratingB - ratingA;
-
-    // Secondary: language priority (Hindi > English > others > Original)
-    const langA = detectLanguage(a.title);
-    const langB = detectLanguage(b.title);
-    const getPriority = (lang) => {
-      if (lang === 'Hindi') return 1;
-      if (lang === 'English') return 2;
-      if (lang === 'Original') return 4;
-      return 3;
-    };
-    return getPriority(langA) - getPriority(langB);
-  });
+  return list;
 }
 
 // ─── getItemLayout for 2-column FlatList ──────────────────────────────────────
@@ -446,8 +415,11 @@ export default function HomeScreen({ navigation }) {
       let accumulatedData = [];
       const targetCount = isLoadMore ? 10 : 20;
       const maxPages = currentCategory === 'Anime' ? 30 : 20;
+      let pagesScanned = 0;
+      // For language filters which have sparse results, limit to 3 pages per batch to keep loading fast
+      const maxPagesPerBatch = (currentFilter === 'Hindi' || currentFilter === 'English') ? 3 : 6;
 
-      while (accumulatedData.length < targetCount && currentPage <= maxPages) {
+      while (accumulatedData.length < targetCount && currentPage <= maxPages && pagesScanned < maxPagesPerBatch) {
         const rawData = await apiService.getTrendingMedia(currentPage, currentFilter, currentCategory);
         if (rawData.length === 0) {
           setHasMore(false);
@@ -469,6 +441,7 @@ export default function HomeScreen({ navigation }) {
         }
 
         currentPage++;
+        pagesScanned++;
       }
 
       if (accumulatedData.length === 0 && targetPage === 0) {
@@ -507,12 +480,29 @@ export default function HomeScreen({ navigation }) {
       setIsSearching(true);
       setLoading(true);
       loadingRef.current = true;
-      setHasMore(true);
+      setHasMore(false); // Disable Load More pagination for search
       setSearchLanguage('All'); // Reset search language to 'All' on new search
       setShowSearchFilterMenu(false); // Hide the language menu
       console.log(`[Search] Triggering search API for query: "${trimmed}"`);
-      const data = await apiService.searchMedia(trimmed, 0);
-      console.log(`[Search] API returned ${data.length} results`);
+      
+      let allResults = [];
+      let pageNum = 0;
+      const maxSearchPages = 8; // Fetch up to 8 pages of results at once
+      
+      while (pageNum < maxSearchPages) {
+        console.log(`[Search] Fetching page ${pageNum} for query: "${trimmed}"`);
+        const pageData = await apiService.searchMedia(trimmed, pageNum);
+        if (!pageData || pageData.length === 0) {
+          break;
+        }
+        allResults = [...allResults, ...pageData];
+        if (pageData.length < 30) {
+          break;
+        }
+        pageNum++;
+      }
+      
+      console.log(`[Search] Combined results count: ${allResults.length}`);
 
       // ✅ Discard results if the search query was cleared or changed in-flight
       const currentQuery = searchQueryRef.current.trim();
@@ -525,7 +515,7 @@ export default function HomeScreen({ navigation }) {
         return;
       }
 
-      setMediaList(makeUnique(data)); // Directly render original search results from API
+      setMediaList(makeUnique(allResults)); // Directly render original search results from API
       setPage(0);
     } catch (e) {
       console.error('[Search] Error:', e);
@@ -554,7 +544,7 @@ export default function HomeScreen({ navigation }) {
 
     const delayDebounceFn = setTimeout(() => {
       triggerSearch(searchQuery);
-    }, 500);
+    }, 150);
 
     return () => clearTimeout(delayDebounceFn);
     // isSearching intentionally omitted — we only want to react to searchQuery changes
@@ -669,6 +659,17 @@ export default function HomeScreen({ navigation }) {
     return filtered;
   }, [mediaList, isSearching, searchLanguage]);
 
+  // Dynamically calculate the languages present in search results
+  const dynamicSearchLanguages = useMemo(() => {
+    if (!isSearching || mediaList.length === 0) return ['All'];
+    const foundLanguages = new Set();
+    mediaList.forEach(item => {
+      const lang = detectLanguage(item.title);
+      if (lang) foundLanguages.add(lang);
+    });
+    return ['All', ...Array.from(foundLanguages).sort()];
+  }, [mediaList, isSearching]);
+
   // ─── Render Helpers ───────────────────────────────────────────────────────
 
   // Stable per-item press handlers — keyed by item.id so memo(MediaCard) works.
@@ -768,42 +769,15 @@ export default function HomeScreen({ navigation }) {
 
       <AdBanner728x90 />
 
-      {/* Header Row with Filter Button */}
-      <View style={styles.headerRow}>
-        <Text style={styles.sectionHeader}>
-          {isSearching ? `Search Results` : `${activeCategory} - ${activeFilter}`}
-        </Text>
-        {!isSearching ? (
-          <TouchableOpacity
-            style={styles.filterBtn}
-            activeOpacity={0.7}
-            onPress={handleToggleFilterMenu}
-          >
-            <Text style={styles.filterBtnText}>Filters ☰</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.filterBtn}
-            activeOpacity={0.7}
-            onPress={() => {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-              setShowSearchFilterMenu(prev => !prev);
-            }}
-          >
-            <Text style={styles.filterBtnText}>{`Lang: ${searchLanguage} ▾`}</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Search Filter Horizontal Pill Selector Panel */}
-      {isSearching && showSearchFilterMenu && (
+      {/* Search Filter Horizontal Pill Selector Panel - Always visible when searching */}
+      {isSearching && (
         <View style={styles.filterMenuContainer}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.filterScroll}
           >
-            {SEARCH_LANGUAGES.map((langName) => {
+            {dynamicSearchLanguages.map((langName) => {
               const isSelected = searchLanguage === langName;
               return (
                 <TouchableOpacity
@@ -822,8 +796,8 @@ export default function HomeScreen({ navigation }) {
         </View>
       )}
 
-      {/* Filter Horizontal Pill Selector Panel */}
-      {showFilterMenu && !isSearching && (
+      {/* Filter Horizontal Pill Selector Panel - Always visible when not searching */}
+      {!isSearching && (
         <View style={styles.filterMenuContainer}>
           <ScrollView
             horizontal
