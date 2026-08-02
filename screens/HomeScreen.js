@@ -468,10 +468,30 @@ export default function HomeScreen({ navigation }) {
       const targetCount = isLoadMore ? 10 : 20;
       let reachedEnd = false;
 
+      // 1. Fetch the first page individually to save latency in 90% of requests
+      const rawData = await apiService.getTrendingMedia(currentPage, currentFilter, currentCategory);
+      if (rawData && rawData.length > 0) {
+        currentPage++;
+        const filteredData = applyClientSideFilter(rawData, currentFilter, currentCategory);
+        const existingIds = new Set(isLoadMore ? mediaListRef.current.map(item => item.id) : []);
+        const newUniqueItems = filteredData.filter(
+          item => !existingIds.has(item.id) && !accumulatedData.some(a => a.id === item.id)
+        );
+        accumulatedData = [...accumulatedData, ...newUniqueItems];
+
+        if (accumulatedData.length >= targetCount) {
+          accumulatedData = accumulatedData.slice(0, targetCount);
+          reachedEnd = true;
+        }
+      } else {
+        setHasMore(false);
+        reachedEnd = true;
+      }
+
+      // 2. Fetch subsequent pages in parallel ONLY if the first page did not fulfill the targetCount
       while (accumulatedData.length < targetCount && !reachedEnd) {
-        // Fetch 4 pages in parallel starting from currentPage
-        const pageBatch = [currentPage, currentPage + 1, currentPage + 2, currentPage + 3];
-        console.log(`[LoadMore] Fetching pages ${pageBatch.join(', ')} in parallel`);
+        const pageBatch = [currentPage, currentPage + 1, currentPage + 2];
+        console.log(`[LoadMore] Fetching subsequent pages ${pageBatch.join(', ')} in parallel`);
         
         const fetchPromises = pageBatch.map(pageIndex => 
           apiService.getTrendingMedia(pageIndex, currentFilter, currentCategory)
@@ -485,10 +505,10 @@ export default function HomeScreen({ navigation }) {
 
         // Process results sequentially to maintain source order
         for (let i = 0; i < pageBatch.length; i++) {
-          const rawData = resultsBatch[i];
+          const pageData = resultsBatch[i];
           const pageIndex = pageBatch[i];
 
-          if (!rawData || rawData.length === 0) {
+          if (!pageData || pageData.length === 0) {
             setHasMore(false);
             reachedEnd = true;
             break;
@@ -496,9 +516,8 @@ export default function HomeScreen({ navigation }) {
 
           currentPage = pageIndex + 1;
 
-          const filteredData = applyClientSideFilter(rawData, currentFilter, currentCategory);
+          const filteredData = applyClientSideFilter(pageData, currentFilter, currentCategory);
 
-          // Deduplicate with existing list and accumulated batch
           const existingIds = new Set(isLoadMore ? mediaListRef.current.map(item => item.id) : []);
           const newUniqueItems = filteredData.filter(
             item => !existingIds.has(item.id) && !accumulatedData.some(a => a.id === item.id)
@@ -507,9 +526,7 @@ export default function HomeScreen({ navigation }) {
           accumulatedData = [...accumulatedData, ...newUniqueItems];
 
           if (accumulatedData.length >= targetCount) {
-            // Enforce even count to ensure complete rows of 2 cards
-            const evenCount = accumulatedData.length % 2 === 0 ? accumulatedData.length : accumulatedData.length - 1;
-            accumulatedData = accumulatedData.slice(0, evenCount);
+            accumulatedData = accumulatedData.slice(0, targetCount);
             break;
           }
         }
