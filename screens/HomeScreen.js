@@ -229,29 +229,23 @@ function sortMediaList(list, isSearchActive, queryOrFilter) {
     });
   }
 
-  // Only apply custom sorting for language filters (Hindi/English)
-  if (queryOrFilter === 'Hindi' || queryOrFilter === 'English') {
-    return [...list].sort((a, b) => {
-      // Always sort by rating first (highest first)
-      const ratingA = parseFloat(a.rating) || 0;
-      const ratingB = parseFloat(b.rating) || 0;
-      if (ratingB !== ratingA) return ratingB - ratingA;
+  return [...list].sort((a, b) => {
+    // Always sort by rating first (highest first)
+    const ratingA = parseFloat(a.rating) || 0;
+    const ratingB = parseFloat(b.rating) || 0;
+    if (ratingB !== ratingA) return ratingB - ratingA;
 
-      // Secondary: language priority (Hindi > English > others > Original)
-      const langA = detectLanguage(a.title);
-      const langB = detectLanguage(b.title);
-      const getPriority = (lang) => {
-        if (lang === 'Hindi') return 1;
-        if (lang === 'English') return 2;
-        if (lang === 'Original') return 4;
-        return 3;
-      };
-      return getPriority(langA) - getPriority(langB);
-    });
-  }
-
-  // Otherwise, return unmodified (keeps Netmirror's trending/natural order)
-  return list;
+    // Secondary: language priority (Hindi > English > others > Original)
+    const langA = detectLanguage(a.title);
+    const langB = detectLanguage(b.title);
+    const getPriority = (lang) => {
+      if (lang === 'Hindi') return 1;
+      if (lang === 'English') return 2;
+      if (lang === 'Original') return 4;
+      return 3;
+    };
+    return getPriority(langA) - getPriority(langB);
+  });
 }
 
 // ─── getItemLayout for 2-column FlatList ──────────────────────────────────────
