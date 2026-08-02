@@ -145,16 +145,7 @@ function applyClientSideFilter(list, filterName, categoryName) {
         return typeLower === 'tv show' || typeLower === 'tv' || typeLower === 'series';
       }
       if (categoryName === 'Anime') {
-        const countryLower = (item.country || '').toLowerCase();
-        const channelLower = (item.channel || '').toLowerCase();
-        return countryLower === 'japan' ||
-          channelLower.includes('anime') ||
-          titleLower.includes('anime') ||
-          titleLower.includes('naruto') ||
-          titleLower.includes('boruto') ||
-          titleLower.includes('jujutsu') ||
-          titleLower.includes('one piece') ||
-          titleLower.includes('demon slayer');
+        return true;
       }
       return true;
     });
