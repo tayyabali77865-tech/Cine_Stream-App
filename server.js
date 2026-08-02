@@ -221,7 +221,7 @@ async function fetchFromNetmirrorWithRetry(endpoint) {
         console.log(`[Fetcher] Sending request to NetMirror: ${url} (Attempt ${attempt}/${maxRetries})`);
         const res = await axios.get(url, {
           headers: { 'Content-Type': 'application/json', ...getHeaders() },
-          timeout: 4000
+          timeout: 2500
         });
 
         // Validate response is a parsed JSON object (not HTML block page or string)
@@ -1355,16 +1355,21 @@ app.listen(PORT, '0.0.0.0', async () => {
   console.log('[Warmup] Initializing background cache pre-fetch...');
   const warmupEndpoints = [
     '/movies/filter?sort_by=date&items_per_page=30&page=0', // Latest All Page 0
+    '/movies/filter?sort_by=date&items_per_page=30&page=1', // Latest All Page 1
     '/movies/filter?sort_by=date&country=Japan&items_per_page=30&page=0', // Anime Page 0
+    '/movies/filter?sort_by=date&country=Japan&items_per_page=30&page=1', // Anime Page 1
     '/movies/filter?sort_by=date&type=1&items_per_page=30&page=0', // Movies Latest
-    '/movies/filter?sort_by=date&type=2&items_per_page=30&page=0'  // TV Shows Latest
+    '/movies/filter?sort_by=date&type=1&items_per_page=30&page=1', // Movies Latest Page 1
+    '/movies/filter?sort_by=date&type=2&items_per_page=30&page=0', // TV Shows Latest
+    '/movies/filter?sort_by=date&type=2&items_per_page=30&page=1', // TV Shows Latest Page 1
+    '/movies/filter?dubbing=Hindi&items_per_page=30&page=0',       // Hindi filter
   ];
 
-  for (const endpoint of warmupEndpoints) {
+  Promise.all(warmupEndpoints.map(endpoint =>
     catalogCache.get(endpoint).then(({ status }) => {
-      console.log(`[Warmup] Successfully preloaded: ${endpoint} (Status: ${status})`);
+      console.log(`[Warmup] Preloaded: ${endpoint} (${status})`);
     }).catch(err => {
-      console.error(`[Warmup] Preload failed for ${endpoint}:`, err.message);
-    });
-  }
+      console.error(`[Warmup] Failed: ${endpoint}:`, err.message);
+    })
+  ));
 });

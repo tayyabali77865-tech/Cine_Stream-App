@@ -470,7 +470,7 @@ export default function HomeScreen({ navigation }) {
 
       let currentPage = targetPage;
       let accumulatedData = [];
-      const targetCount = isLoadMore ? 10 : 20;
+      const targetCount = isLoadMore ? 10 : 10; // 10 initial cards = 1 page fetch = instant display
       let reachedEnd = false;
 
       // 1. Fetch the first page individually to save latency in 90% of requests
