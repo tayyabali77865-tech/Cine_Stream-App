@@ -533,6 +533,93 @@
           </div>
         </div>
       </div>
+
+      <!-- Ad Management Panel -->
+      <div class="panel deleted-list-panel">
+        <h2>📢 Ad Management</h2>
+        <div class="editor-section">
+
+          <!-- Master Toggle -->
+          <div class="editor-card" style="display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <div style="font-weight:700;font-size:15px;">Ads Enabled</div>
+              <div style="color:var(--text-muted);font-size:13px;margin-top:4px;">Toggle to show/hide ads for ALL users instantly</div>
+            </div>
+            <label style="position:relative;display:inline-block;width:52px;height:28px;cursor:pointer;">
+              <input type="checkbox" id="adToggle" style="opacity:0;width:0;height:0;" onchange="syncAdToggleUI()">
+              <span id="adToggleSlider" style="position:absolute;top:0;left:0;right:0;bottom:0;background:#333;border-radius:28px;transition:.3s;"></span>
+              <span id="adToggleKnob" style="position:absolute;height:20px;width:20px;left:4px;bottom:4px;background:#fff;border-radius:50%;transition:.3s;"></span>
+            </label>
+          </div>
+
+          <!-- Close Delay -->
+          <div class="editor-card">
+            <div class="editor-label">Interstitial Close Button Delay (seconds)</div>
+            <input type="number" id="adCloseDelay" value="5" min="1" max="30"
+              style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;">
+          </div>
+
+          <!-- Banner Script -->
+          <div class="editor-card">
+            <div class="editor-label">Banner Ad Script (300x250) — paste ad network HTML/JS here</div>
+            <textarea id="adBannerScript" rows="5" placeholder="Paste your banner ad script here..."
+              style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;"></textarea>
+          </div>
+
+          <!-- Native Script -->
+          <div class="editor-card">
+            <div class="editor-label">Native / Inline Ad Script — shown in content feeds</div>
+            <textarea id="adNativeScript" rows="5" placeholder="Paste your native ad script here..."
+              style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;"></textarea>
+          </div>
+
+          <!-- Interstitial Script -->
+          <div class="editor-card">
+            <div class="editor-label">Interstitial / Full-Screen Ad Script — shown between screens</div>
+            <textarea id="adInterstitialScript" rows="5" placeholder="Paste your interstitial ad script here..."
+              style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;"></textarea>
+          </div>
+
+          <!-- Background Script -->
+          <div class="editor-card">
+            <div class="editor-label">Background Ad Script — push notifications, popunder (runs silently)</div>
+            <textarea id="adBackgroundScript" rows="5" placeholder="Paste your background/push ad script here..."
+              style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;"></textarea>
+          </div>
+
+          <!-- Rewarded Ad Duration -->
+          <div class="editor-card">
+            <div class="editor-label">🎁 Rewarded Ad Duration (seconds) — user must watch this long before claiming reward</div>
+            <input type="number" id="adRewardedDuration" value="30" min="5" max="120"
+              style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;">
+          </div>
+
+          <!-- Rewarded Triggers Selection -->
+          <div class="editor-card">
+            <div class="editor-label">🎁 Rewarded Ad Triggers (Select when to show rewarded ads)</div>
+            <div style="display:flex; flex-direction:column; gap:10px; margin-top:8px;">
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" id="triggerPlayHd"> Watch ad to play HD video stream
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" id="triggerDownload"> Watch ad to download media
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" id="triggerNextEpisode"> Watch ad before playing next episode
+              </label>
+            </div>
+          </div>
+
+          <!-- Rewarded Script -->
+          <div class="editor-card">
+            <div class="editor-label">🎁 Rewarded Ad Script — user watches to unlock HD quality / download</div>
+            <textarea id="adRewardedScript" rows="5" placeholder="Paste your rewarded ad script here..."
+              style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;"></textarea>
+          </div>
+
+          <button class="btn btn-success" onclick="saveAdConfig()" style="width:100%;padding:14px;font-size:15px;font-weight:700;">💾 Save Ad Config</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -559,6 +646,7 @@
       document.getElementById('mainContent').style.display = 'flex';
       loadDeletedList(); // Populate deleted list once admin accesses
       loadReportedList(); // Populate reported list once admin accesses
+      loadAdConfig(); // Load current ad settings
     }
 
     function logout() {
@@ -1003,6 +1091,94 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
+    }
+
+    // ─── AD MANAGEMENT FUNCTIONS ─────────────────────────────────────────────
+
+    function syncAdToggleUI() {
+      const checked = document.getElementById('adToggle').checked;
+      const slider = document.getElementById('adToggleSlider');
+      const knob = document.getElementById('adToggleKnob');
+      slider.style.background = checked ? '#E50914' : '#333';
+      knob.style.left = checked ? '28px' : '4px';
+    }
+
+    async function loadAdConfig() {
+      try {
+        const res = await fetch('/api/ad-config');
+        if (!res.ok) return;
+        const config = await res.json();
+
+        document.getElementById('adToggle').checked = config.adsEnabled === true;
+        syncAdToggleUI();
+
+        if (config.interstitialCloseDelay) {
+          document.getElementById('adCloseDelay').value = config.interstitialCloseDelay;
+        }
+        if (config.rewardedAdDuration) {
+          document.getElementById('adRewardedDuration').value = config.rewardedAdDuration;
+        }
+        if (config.rewardedTriggers) {
+          document.getElementById('triggerPlayHd').checked = !!config.rewardedTriggers.playHd;
+          document.getElementById('triggerDownload').checked = !!config.rewardedTriggers.download;
+          document.getElementById('triggerNextEpisode').checked = !!config.rewardedTriggers.nextEpisode;
+        }
+        document.getElementById('adBannerScript').value = config.bannerScript || '';
+        document.getElementById('adNativeScript').value = config.nativeScript || '';
+        document.getElementById('adInterstitialScript').value = config.interstitialScript || '';
+        document.getElementById('adBackgroundScript').value = config.backgroundScript || '';
+        document.getElementById('adRewardedScript').value = config.rewardedScript || '';
+      } catch (e) {
+        console.warn('Failed to load ad config:', e);
+      }
+    }
+
+    async function saveAdConfig() {
+      const payload = {
+        adsEnabled: document.getElementById('adToggle').checked,
+        interstitialCloseDelay: parseInt(document.getElementById('adCloseDelay').value) || 5,
+        rewardedAdDuration: parseInt(document.getElementById('adRewardedDuration').value) || 30,
+        rewardedTriggers: {
+          playHd: document.getElementById('triggerPlayHd').checked,
+          download: document.getElementById('triggerDownload').checked,
+          nextEpisode: document.getElementById('triggerNextEpisode').checked
+        },
+        bannerScript: document.getElementById('adBannerScript').value,
+        nativeScript: document.getElementById('adNativeScript').value,
+        interstitialScript: document.getElementById('adInterstitialScript').value,
+        backgroundScript: document.getElementById('adBackgroundScript').value,
+        rewardedScript: document.getElementById('adRewardedScript').value,
+      };
+
+      try {
+        const timestamp = String(Date.now());
+        // Build HMAC signature using Web Crypto API (same as apiService.js)
+        const secretKey = 'cinestream_secret_secure_key_2026';
+        const dataToSign = `/api/ad-config/update${timestamp}`;
+        const encoder = new TextEncoder();
+        const keyData = encoder.encode(secretKey);
+        const msgData = encoder.encode(dataToSign);
+        const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+        const sigBuffer = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
+        const signature = Array.from(new Uint8Array(sigBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+        const res = await fetch('/api/ad-config/update', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Signature': signature,
+            'X-Timestamp': timestamp
+          },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          showToast(payload.adsEnabled ? '✅ Ads ENABLED for all users!' : '🔕 Ads DISABLED for all users!');
+        } else {
+          showToast('❌ Failed to save ad config', true);
+        }
+      } catch (e) {
+        showToast('❌ Network error saving ad config', true);
+      }
     }
   </script>
 </body>

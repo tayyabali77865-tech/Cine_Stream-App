@@ -138,6 +138,11 @@ app.use((req, res, next) => {
     return next();
   }
 
+  // Exempt ad-config endpoint — must be public so old app versions can fetch it
+  if (urlClean === '/api/ad-config') {
+    return next();
+  }
+
   const signature = req.headers['x-signature'];
   const timestamp = req.headers['x-timestamp'];
 
@@ -1144,6 +1149,66 @@ app.delete('/api/reported-errors/:id', async (req, res) => {
 
   await db.removeReportedError(id);
   res.json({ success: true, message: `Reported error for ID ${id} cleared.` });
+});
+
+// ─── AD CONFIG ──────────────────────────────────────────────────────────────
+// In-memory ad config — toggle ads remotely without any app update
+// To persist across server restarts, this can be moved to MongoDB.
+let adConfigStore = {
+  adsEnabled: false,          // Master toggle — set to true to show ads to all users
+  interstitialCloseDelay: 5,  // Seconds before close button appears on interstitial
+  rewardedAdDuration: 30,     // Seconds user must watch rewarded ad before claiming reward
+  rewardedTriggers: {
+    playHd: false,            // Watch ad to play HD video
+    download: false,          // Watch ad to download
+    nextEpisode: false        // Watch ad to play next episode
+  },
+  bannerScript: '',           // HTML/JS ad script for banner ads (300x250)
+  nativeScript: '',           // HTML/JS ad script for native/inline ads
+  interstitialScript: '',     // HTML/JS ad script for full-screen interstitial ads
+  backgroundScript: '',       // HTML/JS ad script (push notifications, popunder)
+  rewardedScript: '',         // HTML/JS ad script for rewarded ads (user watches to earn reward)
+  updatedAt: null
+};
+
+// Public endpoint — no HMAC required (old app versions can access)
+app.get('/api/ad-config', (req, res) => {
+  res.json(adConfigStore);
+});
+
+// Admin endpoint — update ad config (protected by HMAC)
+app.post('/api/ad-config/update', (req, res) => {
+  const {
+    adsEnabled,
+    interstitialCloseDelay,
+    rewardedAdDuration,
+    rewardedTriggers,
+    bannerScript,
+    nativeScript,
+    interstitialScript,
+    backgroundScript,
+    rewardedScript
+  } = req.body;
+
+  if (typeof adsEnabled === 'boolean') adConfigStore.adsEnabled = adsEnabled;
+  if (typeof interstitialCloseDelay === 'number') adConfigStore.interstitialCloseDelay = interstitialCloseDelay;
+  if (typeof rewardedAdDuration === 'number') adConfigStore.rewardedAdDuration = rewardedAdDuration;
+  if (rewardedTriggers && typeof rewardedTriggers === 'object') {
+    adConfigStore.rewardedTriggers = {
+      playHd: !!rewardedTriggers.playHd,
+      download: !!rewardedTriggers.download,
+      nextEpisode: !!rewardedTriggers.nextEpisode
+    };
+  }
+  if (typeof bannerScript === 'string') adConfigStore.bannerScript = bannerScript;
+  if (typeof nativeScript === 'string') adConfigStore.nativeScript = nativeScript;
+  if (typeof interstitialScript === 'string') adConfigStore.interstitialScript = interstitialScript;
+  if (typeof backgroundScript === 'string') adConfigStore.backgroundScript = backgroundScript;
+  if (typeof rewardedScript === 'string') adConfigStore.rewardedScript = rewardedScript;
+  adConfigStore.updatedAt = new Date().toISOString();
+
+  console.log(`[AdConfig] Updated — adsEnabled: ${adConfigStore.adsEnabled}`);
+  res.json({ success: true, config: adConfigStore });
 });
 
 // Get active mirrors

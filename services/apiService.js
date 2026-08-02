@@ -452,5 +452,44 @@ export const apiService = {
       console.warn('Playback error report failed:', e);
       return false;
     }
+  },
+
+  /**
+   * Fetches the current ad config from server.
+   * No HMAC required — public endpoint for backward compatibility.
+   */
+  async getAdConfig() {
+    try {
+      // Direct fetch without HMAC since /api/ad-config is public
+      const baseUrl = activeBaseUrl.replace(/\/api$/, '');
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(`${baseUrl}/api/ad-config`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (res.ok) return await res.json();
+      return null;
+    } catch (e) {
+      console.warn('Ad config fetch failed:', e);
+      return null;
+    }
+  },
+
+  /**
+   * Updates ad config on the server (admin use only — requires HMAC).
+   * @param {Object} config - { adsEnabled, bannerScript, nativeScript, interstitialScript, backgroundScript, interstitialCloseDelay }
+   */
+  async updateAdConfig(config) {
+    try {
+      const response = await customFetch('/ad-config/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      if (!response.ok) throw new Error('Update failed');
+      return await response.json();
+    } catch (e) {
+      console.warn('Ad config update failed:', e);
+      return null;
+    }
   }
 };

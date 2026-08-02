@@ -8,6 +8,7 @@ import HomeScreen from './screens/HomeScreen';
 import DetailsScreen from './screens/DetailsScreen';
 import PlayerScreen from './screens/PlayerScreen';
 import { BackgroundAdHandler } from './components/AdBanner';
+import { AdProvider } from './context/AdContext';
 
 // Enable native screen containers
 enableScreens(true);
@@ -74,7 +75,7 @@ export default function App() {
   }
 
   return (
-    <>
+    <AdProvider>
       <NavigationContainer>
         <Stack.Navigator
           initialRouteName="Home"
@@ -98,7 +99,7 @@ export default function App() {
         </Stack.Navigator>
       </NavigationContainer>
       <BackgroundAdHandler />
-    </>
+    </AdProvider>
   );
 }
 
