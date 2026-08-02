@@ -259,24 +259,41 @@ app.get('/api/trending', async (req, res) => {
   const category = req.query.category || 'All';
 
   try {
-    let typeQuery = '';
-    if (category === 'Movies') {
-      typeQuery = '&type=1';
-    } else if (category === 'Series') {
-      typeQuery = '&type=2';
+    let useTrandingApi = false;
+    let trandingId = '';
+
+    if (filter === 'Trending') {
+      useTrandingApi = true;
+      trandingId = '25';
+    } else if (filter === 'Hollywood') {
+      useTrandingApi = true;
+      trandingId = '13';
+    } else if (filter === 'Bollywood') {
+      useTrandingApi = true;
+      trandingId = '14';
+    } else if (filter === 'South Indian') {
+      useTrandingApi = true;
+      trandingId = '15';
     }
 
-    let filterQuery = '';
-    if (filter === 'Hollywood') {
-      filterQuery = '&dubbing=Hindi&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
-    } else if (filter === 'Bollywood') {
-      filterQuery = '&dubbing=Hindi&country=india';
-    } else if (filter === 'Korean') {
-      filterQuery = '&country=Korea';
-    } else if (filter === 'Chinese') {
-      filterQuery = '&country=China';
-    } else if (filter === 'South Indian') {
-      filterQuery = '&country=india';
+    let endpoint = '';
+    if (useTrandingApi) {
+      endpoint = `/tranding?id=${trandingId}&page=${page}`;
+    } else {
+      let typeQuery = '';
+      if (category === 'Movies') {
+        typeQuery = '&type=1';
+      } else if (category === 'Series') {
+        typeQuery = '&type=2';
+      }
+
+      let filterQuery = '';
+      if (filter === 'Korean') {
+        filterQuery = '&country=Korea';
+      } else if (filter === 'Chinese') {
+        filterQuery = '&country=China';
+      }
+      endpoint = `/movies/list/filter?page=${page}${typeQuery}${filterQuery}`;
     }
 
     if (category === 'Anime') {
@@ -304,10 +321,22 @@ app.get('/api/trending', async (req, res) => {
       return res.json(mediaList);
     }
 
-
-    const endpoint = `/movies/list/filter?page=${page}${typeQuery}${filterQuery}`;
     const { value: data, status } = await catalogCache.get(endpoint);
-    const results = data.results || [];
+    let results = data.results || [];
+
+    // If using the tranding API, we must filter by category manually since the API doesn't support type filtering
+    if (useTrandingApi && category !== 'All') {
+      results = results.filter(item => {
+        const typeLower = (item.media_type || '').toLowerCase();
+        if (category === 'Movies') {
+          return typeLower === 'movie' || typeLower === 'movie/';
+        }
+        if (category === 'Series') {
+          return typeLower === 'tv' || typeLower === 'tv show' || typeLower === 'series';
+        }
+        return true;
+      });
+    }
 
     // isDeleted + isCustom are async — resolve both with Promise.all
     const deletedFlags = await Promise.all(results.map(item => isDeleted(item.id)));
