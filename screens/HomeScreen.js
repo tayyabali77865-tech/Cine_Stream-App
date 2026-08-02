@@ -297,8 +297,8 @@ const MediaCard = memo(({ posterUri, title, type, onPress }) => (
         source={{ uri: posterUri }}
         style={styles.poster}
         contentFit="cover"
-        transition={200} // Smooth premium fade-in
-        priority="high" // Prioritize network bandwidth for poster loads
+        transition={0}
+        priority="normal"
         cachePolicy="memory-disk"
       />
       <View style={styles.badgeContainer}>
@@ -756,6 +756,10 @@ export default function HomeScreen({ navigation }) {
   const pressHandlersRef = useRef({});
 
   const renderCard = useCallback(({ item }) => {
+    // Placeholder item for even-column padding — renders invisible filler
+    if (item._placeholder) {
+      return <View style={styles.card} />;
+    }
     if (!pressHandlersRef.current[item.id]) {
       pressHandlersRef.current[item.id] = () => navigation.navigate('Details', { id: item.id });
     }
@@ -769,6 +773,15 @@ export default function HomeScreen({ navigation }) {
       />
     );
   }, [navigation, activeCategory]);
+
+  // Pad list to even count so last row always shows 2 cards
+  const paddedMediaList = useMemo(() => {
+    const list = isSearching ? filteredSearchList : mediaList;
+    if (list.length % 2 === 1) {
+      return [...list, { id: '__placeholder__', _placeholder: true }];
+    }
+    return list;
+  }, [mediaList, isSearching, filteredSearchList]);
 
   // Pass ListFooter CLASS (not JSX element) as ListFooterComponent.
   // Use extraData so FlatList re-renders the footer when loadingMore flips,
@@ -929,20 +942,20 @@ export default function HomeScreen({ navigation }) {
       ) : (
         <FlatList
           key="media-list"
-          data={isSearching ? filteredSearchList : mediaList}
+          data={paddedMediaList}
           renderItem={renderCard}
           keyExtractor={item => item.id}
           numColumns={2}
           contentContainerStyle={[styles.listContainer, { paddingBottom: 85 }]}
           columnWrapperStyle={styles.columnWrapper}
-          removeClippedSubviews={false}
-          maxToRenderPerBatch={6}
-          updateCellsBatchingPeriod={50}
-          windowSize={5}
-          initialNumToRender={6}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          updateCellsBatchingPeriod={30}
+          windowSize={8}
+          initialNumToRender={10}
           ListEmptyComponent={listEmpty}
           onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.4}
+          onEndReachedThreshold={0.3}
           ListFooterComponent={<ListFooter loadingMore={loadingMore} />}
           extraData={loadingMore}
         />
