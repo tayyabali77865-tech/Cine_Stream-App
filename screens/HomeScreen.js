@@ -156,16 +156,8 @@ function applyClientSideFilter(list, filterName, categoryName) {
       const titleLower = item.title.toLowerCase();
       const langLower = (item.language || '').toLowerCase();
 
-      // Language filters (used in Anime category)
-      if (filterName === 'Hindi') {
-        return langLower.includes('hindi') || titleLower.includes('hindi');
-      }
-      if (filterName === 'English') {
-        return langLower.includes('english') || titleLower.includes('english');
-      }
-
-      // Regional filters (already filtered by country on the server, so we trust server results)
-      if (filterName === 'Bollywood' || filterName === 'Hollywood' || filterName === 'Korean' || filterName === 'Chinese') {
+      // Language and Regional filters are already filtered on the server, so we trust server results
+      if (filterName === 'Hindi' || filterName === 'English' || filterName === 'Bollywood' || filterName === 'Hollywood' || filterName === 'Korean' || filterName === 'Chinese') {
         return true;
       }
 
