@@ -237,6 +237,10 @@ async function fetchFromNetmirrorWithRetry(endpoint) {
 
         throw new Error('Invalid or empty response structure from NetMirror.');
       } catch (err) {
+        if (err.response && err.response.status === 404) {
+          console.log(`[Fetcher] NetMirror returned 404 for ${url}. Treating as empty results.`);
+          return { results: [] };
+        }
         lastError = err;
         console.warn(`[Fetcher] Attempt ${attempt} failed on mirror ${activeMirror}: ${err.message}`);
 
