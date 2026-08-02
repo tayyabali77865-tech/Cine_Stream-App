@@ -334,22 +334,64 @@ app.get('/api/trending', async (req, res) => {
         results = cacheRes.value.results || [];
       } else {
         let queryParams = 'sort_by=date';
-        if (filter === 'Hollywood') {
-          queryParams = 'sort_by=date&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
-        } else if (filter === 'Bollywood') {
-          queryParams = 'sort_by=date&country=india';
-        } else if (filter === 'Korean') {
-          queryParams = 'sort_by=date&country=Korea';
-        } else if (filter === 'Chinese') {
-          queryParams = 'sort_by=date&country=China';
-        } else if (filter === 'South Indian') {
-          queryParams = 'sort_by=date';
-        }
 
-        if (category === 'Movies') {
-          queryParams += '&type=1';
-        } else if (category === 'Series') {
-          queryParams += '&type=2';
+        if (category === 'Series') {
+          // Build server-side filter params directly to match netmirror.center/explore/tv
+          if (filter === 'Hindi') {
+            queryParams = 'type=2&dubbing=Hindi';
+          } else if (filter === 'English') {
+            queryParams = 'type=2&dubbing=English';
+          } else if (filter === 'Bollywood') {
+            queryParams = 'type=2&country=india&dubbing=Hindi';
+          } else if (filter === 'Hollywood') {
+            queryParams = 'type=2&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
+          } else if (filter === 'Korean') {
+            queryParams = 'type=2&country=Korea';
+          } else if (filter === 'Chinese') {
+            queryParams = 'type=2&country=China';
+          } else if (filter === 'South Indian') {
+            queryParams = 'type=2&country=india';
+          } else {
+            // Latest / Trending fallback
+            queryParams = 'type=2&sort_by=date';
+          }
+        } else if (category === 'Movies') {
+          if (filter === 'Hindi') {
+            queryParams = 'type=1&dubbing=Hindi';
+          } else if (filter === 'English') {
+            queryParams = 'type=1&dubbing=English';
+          } else if (filter === 'Bollywood') {
+            queryParams = 'type=1&country=india&dubbing=Hindi';
+          } else if (filter === 'Hollywood') {
+            queryParams = 'type=1&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
+          } else if (filter === 'Korean') {
+            queryParams = 'type=1&country=Korea';
+          } else if (filter === 'Chinese') {
+            queryParams = 'type=1&country=China';
+          } else if (filter === 'South Indian') {
+            queryParams = 'type=1&country=india';
+          } else {
+            queryParams = 'type=1&sort_by=date';
+          }
+        } else {
+          // All category
+          if (filter === 'Hindi') {
+            queryParams = 'dubbing=Hindi';
+          } else if (filter === 'English') {
+            queryParams = 'dubbing=English';
+          } else if (filter === 'Bollywood') {
+            queryParams = 'country=india&dubbing=Hindi';
+          } else if (filter === 'Hollywood') {
+            queryParams = 'countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
+          } else if (filter === 'Korean') {
+            queryParams = 'country=Korea';
+          } else if (filter === 'Chinese') {
+            queryParams = 'country=China';
+          } else if (filter === 'South Indian') {
+            queryParams = 'country=india';
+          } else {
+            queryParams = 'sort_by=date';
+          }
         }
 
         const endpoint = `/movies/filter?${queryParams}&items_per_page=30&page=${page}`;
