@@ -302,7 +302,7 @@ app.get('/api/trending', async (req, res) => {
       if (results.length === 0) {
         let fallbackEndpoint = '';
         if (category === 'Anime') {
-          fallbackEndpoint = `/movies/filter?sort_by=date&genre_id=16&items_per_page=30&page=${page}`;
+          fallbackEndpoint = `/movies/list/filter?genre_ids[]=10&genre_ids[]=6&items_per_page=30&page=${page}`;
         } else if (category === 'All') {
           fallbackEndpoint = `/movies/filter?sort_by=date&items_per_page=30&page=${page}`;
         } else {
@@ -316,7 +316,7 @@ app.get('/api/trending', async (req, res) => {
     } else {
       // Non-trending, specific filters
       if (category === 'Anime') {
-        const endpoint = `/movies/filter?sort_by=date&genre_id=16&items_per_page=30&page=${page}`;
+        const endpoint = `/movies/list/filter?genre_ids[]=10&genre_ids[]=6&items_per_page=30&page=${page}`;
         const cacheRes = await catalogCache.get(endpoint);
         status = cacheRes.status;
         results = cacheRes.value.results || [];
