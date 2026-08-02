@@ -86,8 +86,10 @@ function getDisplayBadge(item, activeCategory) {
 function makeUnique(list) {
   const seenIds = new Set();
   return list.filter(item => {
-    if (!item || !item.id || seenIds.has(item.id)) return false;
-    seenIds.add(item.id);
+    if (!item || !item.id) return false;
+    const itemId = String(item.id);
+    if (seenIds.has(itemId)) return false;
+    seenIds.add(itemId);
     return true;
   });
 }

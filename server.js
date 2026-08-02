@@ -265,15 +265,15 @@ app.get('/api/trending', async (req, res) => {
     if (filter === 'Trending') {
       queryParams = 'sort_by=date';
     } else if (filter === 'Hollywood') {
-      queryParams = 'sort_by=date&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
+      queryParams = 'sort_by=date&dubbing=Hindi&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
     } else if (filter === 'Bollywood') {
-      queryParams = 'sort_by=date&country=india';
+      queryParams = 'sort_by=date&dubbing=Hindi&country=india';
     } else if (filter === 'Korean') {
       queryParams = 'sort_by=date&country=Korea';
     } else if (filter === 'Chinese') {
       queryParams = 'sort_by=date&country=China';
     } else if (filter === 'South Indian') {
-      queryParams = 'sort_by=date';
+      queryParams = 'sort_by=date&country=india';
     }
 
     if (category === 'Anime') {
