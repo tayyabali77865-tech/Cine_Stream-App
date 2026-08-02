@@ -321,21 +321,58 @@ app.get('/api/trending', async (req, res) => {
       return res.json(mediaList);
     }
 
-    const { value: data, status } = await catalogCache.get(endpoint);
-    let results = data.results || [];
+    let results = [];
+    let status = 'MISS';
 
-    // If using the tranding API, we must filter by category manually since the API doesn't support type filtering
-    if (useTrandingApi && category !== 'All') {
-      results = results.filter(item => {
-        const typeLower = (item.media_type || '').toLowerCase();
-        if (category === 'Movies') {
-          return typeLower === 'movie' || typeLower === 'movie/';
+    if (useTrandingApi) {
+      let currentPage = parseInt(page, 10) || 0;
+      let scanCount = 0;
+      const targetCount = 15;
+
+      while (results.length < targetCount && scanCount < 5) {
+        const pageEndpoint = `/tranding?id=${trandingId}&page=${currentPage}`;
+        const cacheRes = await catalogCache.get(pageEndpoint);
+        status = cacheRes.status;
+        const pageResults = cacheRes.value.results || [];
+        if (pageResults.length === 0) break;
+
+        const filtered = pageResults.filter(item => {
+          const typeLower = (item.media_type || '').toLowerCase();
+          if (category === 'Movies') {
+            return typeLower === 'movie' || typeLower === 'movie/';
+          }
+          if (category === 'Series') {
+            return typeLower === 'tv' || typeLower === 'tv show' || typeLower === 'series';
+          }
+          return true;
+        });
+
+        results = [...results, ...filtered];
+        currentPage++;
+        scanCount++;
+      }
+
+      // Fallback: If we scanned pages and got absolutely nothing (e.g. TV Shows for Hollywood/Bollywood which are movie-only lists)
+      // Fall back to the explore list API so the section is not empty!
+      if (results.length === 0 && category !== 'All') {
+        let typeQuery = category === 'Movies' ? '&type=1' : '&type=2';
+        let filterQuery = '';
+        if (filter === 'Hollywood') {
+          filterQuery = '&dubbing=Hindi&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
+        } else if (filter === 'Bollywood') {
+          filterQuery = '&dubbing=Hindi&country=india';
+        } else if (filter === 'South Indian') {
+          filterQuery = '&country=india';
         }
-        if (category === 'Series') {
-          return typeLower === 'tv' || typeLower === 'tv show' || typeLower === 'series';
-        }
-        return true;
-      });
+        const fallbackEndpoint = `/movies/list/filter?page=${page}${typeQuery}${filterQuery}`;
+        const cacheRes = await catalogCache.get(fallbackEndpoint);
+        status = cacheRes.status;
+        results = cacheRes.value.results || [];
+      }
+    } else {
+      const cacheRes = await catalogCache.get(endpoint);
+      status = cacheRes.status;
+      results = cacheRes.value.results || [];
     }
 
     // isDeleted + isCustom are async — resolve both with Promise.all
