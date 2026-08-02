@@ -483,39 +483,29 @@ export default function HomeScreen({ navigation }) {
       let currentPage = targetPage;
       let accumulatedData = [];
       const targetCount = isLoadMore ? 10 : 20;
-      let pagesScanned = 0;
-      const maxPagesPerBatch = (currentFilter === 'Hindi' || currentFilter === 'English') ? 3 : 6;
-      let resetCount = 0;
 
-      while (accumulatedData.length < targetCount && pagesScanned < maxPagesPerBatch && resetCount < 5) {
+      while (accumulatedData.length < targetCount) {
         const rawData = await apiService.getTrendingMedia(currentPage, currentFilter, currentCategory);
-        if (rawData.length === 0) {
-          currentPage = 0;
-          resetCount++;
-          continue;
+        if (!rawData || rawData.length === 0) {
+          setHasMore(false);
+          break;
         }
 
         const filteredData = applyClientSideFilter(rawData, currentFilter, currentCategory);
 
+        // Deduplicate with existing list and accumulated batch
         const existingIds = new Set(isLoadMore ? mediaListRef.current.map(item => item.id) : []);
-        const processedItems = filteredData.map(item => {
-          if (existingIds.has(item.id) || accumulatedData.some(a => a.id === item.id)) {
-            return {
-              ...item,
-              id: `${item.id}_dup_${Date.now()}_${Math.floor(Math.random() * 10000)}`
-            };
-          }
-          return item;
-        });
+        const newUniqueItems = filteredData.filter(
+          item => !existingIds.has(item.id) && !accumulatedData.some(a => a.id === item.id)
+        );
 
-        accumulatedData = [...accumulatedData, ...processedItems];
+        accumulatedData = [...accumulatedData, ...newUniqueItems];
 
         if (accumulatedData.length >= targetCount) {
           break;
         }
 
         currentPage++;
-        pagesScanned++;
       }
 
       if (accumulatedData.length === 0 && targetPage === 0) {
@@ -689,7 +679,7 @@ export default function HomeScreen({ navigation }) {
       console.log(`[LoadMore] handleLoadMore ignored due to guards.`);
       return;
     }
-    const nextPage = pageVal + 1;
+    const nextPage = pageVal;
     if (isSearchingVal) {
       loadSearchMore(searchQueryVal, nextPage);
     } else {
