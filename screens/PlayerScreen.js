@@ -655,7 +655,7 @@ export default function PlayerScreen({ route, navigation }) {
           />
 
           {/* ── Buffering Indicator Overlay ── */}
-          {isBuffering && (
+          {isBuffering && !controlsVisible && (
             <View style={styles.bufferingOverlay}>
               <ActivityIndicator size="large" color="#E50914" />
             </View>
