@@ -260,56 +260,86 @@ app.get('/api/trending', async (req, res) => {
   const cacheKey = `${category}_${filter}_${page}`;
 
   try {
-    let queryParams = 'sort_by=date';
+    let results = [];
+    let status = 'MISS';
 
     if (filter === 'Trending') {
-      queryParams = 'sort_by=date';
-    } else if (filter === 'Hollywood') {
-      queryParams = 'sort_by=date&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
-    } else if (filter === 'Bollywood') {
-      queryParams = 'sort_by=date&country=india';
-    } else if (filter === 'Korean') {
-      queryParams = 'sort_by=date&country=Korea';
-    } else if (filter === 'Chinese') {
-      queryParams = 'sort_by=date&country=China';
-    } else if (filter === 'South Indian') {
-      queryParams = 'sort_by=date';
+      const endpoint = `/tranding?id=25&page=${page}`;
+      const cacheRes = await catalogCache.get(endpoint);
+      status = cacheRes.status;
+      const rawResults = cacheRes.value.results || [];
+
+      results = rawResults.filter(item => {
+        const typeLower = (item.media_type || item.type || '').toLowerCase();
+        const countryLower = (item.country || item.cn || '').toLowerCase();
+        const channelLower = (item.channel || '').toLowerCase();
+        const titleLower = (item.title || '').toLowerCase();
+
+        if (category === 'Movies') {
+          return typeLower === 'movie' || typeLower === 'movie/';
+        }
+        if (category === 'Series') {
+          return typeLower === 'tv' || typeLower === 'tv show' || typeLower === 'series';
+        }
+        if (category === 'Anime') {
+          return countryLower === 'japan' ||
+            channelLower.includes('anime') ||
+            titleLower.includes('anime') ||
+            titleLower.includes('naruto') ||
+            titleLower.includes('boruto') ||
+            titleLower.includes('jujutsu') ||
+            titleLower.includes('one piece') ||
+            titleLower.includes('demon slayer');
+        }
+        return true;
+      });
+
+      // Fallback: If Trending list has no matches for the category, fall back to the explore lists
+      if (results.length === 0 && category !== 'All') {
+        let fallbackEndpoint = '';
+        if (category === 'Anime') {
+          fallbackEndpoint = `/movies/filter?sort_by=date&country=Japan&items_per_page=30&page=${page}`;
+        } else {
+          let typeParam = category === 'Movies' ? '&type=1' : '&type=2';
+          fallbackEndpoint = `/movies/filter?sort_by=date${typeParam}&items_per_page=30&page=${page}`;
+        }
+        const cacheRes = await catalogCache.get(fallbackEndpoint);
+        status = cacheRes.status;
+        results = cacheRes.value.results || [];
+      }
+    } else {
+      // Non-trending, specific filters
+      if (category === 'Anime') {
+        const endpoint = `/movies/filter?sort_by=date&country=Japan&items_per_page=30&page=${page}`;
+        const cacheRes = await catalogCache.get(endpoint);
+        status = cacheRes.status;
+        results = cacheRes.value.results || [];
+      } else {
+        let queryParams = 'sort_by=date';
+        if (filter === 'Hollywood') {
+          queryParams = 'sort_by=date&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
+        } else if (filter === 'Bollywood') {
+          queryParams = 'sort_by=date&country=india';
+        } else if (filter === 'Korean') {
+          queryParams = 'sort_by=date&country=Korea';
+        } else if (filter === 'Chinese') {
+          queryParams = 'sort_by=date&country=China';
+        } else if (filter === 'South Indian') {
+          queryParams = 'sort_by=date';
+        }
+
+        if (category === 'Movies') {
+          queryParams += '&type=1';
+        } else if (category === 'Series') {
+          queryParams += '&type=2';
+        }
+
+        const endpoint = `/movies/filter?${queryParams}&items_per_page=30&page=${page}`;
+        const cacheRes = await catalogCache.get(endpoint);
+        status = cacheRes.status;
+        results = cacheRes.value.results || [];
+      }
     }
-
-    if (category === 'Anime') {
-      const endpoint = `/movies/filter?sort_by=date&country=Japan&items_per_page=30&page=${page}`;
-      const { value: data, status } = await catalogCache.get(endpoint);
-      const results = data.results || [];
-
-      // isDeleted + isCustom are async — resolve both with Promise.all
-      const deletedFlags = await Promise.all(results.map(item => isDeleted(item.id)));
-      const customFlags = await Promise.all(results.map(item => db.getOverride(String(item.id))));
-      const filteredAnime = results.filter((_, i) => !deletedFlags[i]);
-      const mediaList = filteredAnime.map((item, i) => ({
-        id: item.id,
-        title: item.title ? item.title.trim() : 'Unknown Title',
-        poster: item.backdrop_path || 'https://placehold.co/300x450',
-        type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
-        releaseDate: item.release_date || 'N/A',
-        country: item.cn || '',
-        channel: item.channel || '',
-        rating: parseFloat(item.vote_average) || 0,
-        isCustom: !!(customFlags[results.indexOf(item)])
-      }));
-
-      res.setHeader('X-Cache-Status', status);
-      return res.json(mediaList);
-    }
-
-    if (category === 'Movies') {
-      queryParams += '&type=1';
-    } else if (category === 'Series') {
-      queryParams += '&type=2';
-    }
-
-    const endpoint = `/movies/filter?${queryParams}&items_per_page=30&page=${page}`;
-    const { value: data, status } = await catalogCache.get(endpoint);
-    const results = data.results || [];
 
     // isDeleted + isCustom are async — resolve both with Promise.all
     const deletedFlags = await Promise.all(results.map(item => isDeleted(item.id)));

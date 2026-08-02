@@ -83,6 +83,35 @@ function getDisplayBadge(item, activeCategory) {
   return 'Movie';
 }
 
+function getCoreTitle(title) {
+  if (!title) return '';
+  let cleaned = title.toLowerCase();
+  cleaned = cleaned.replace(/\[.*?\]/g, ' ');
+  cleaned = cleaned.replace(/\(.*?\)/g, ' ');
+  
+  const noiseWords = [
+    /\bin hindi\b/g,
+    /\bin english\b/g,
+    /\bhindi dubbed\b/g,
+    /\benglish dubbed\b/g,
+    /\bhindi\b/g,
+    /\benglish\b/g,
+    /\bdubbed\b/g,
+    /\bmulti audio\b/g,
+    /\borg audio\b/g,
+    /\bseason\s*\d+\b/g,
+    /\bs\d+\b/g
+  ];
+  
+  noiseWords.forEach(pattern => {
+    cleaned = cleaned.replace(pattern, ' ');
+  });
+  
+  return cleaned.replace(/[^a-z0-9\s]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+}
+
 function makeUnique(list, isSearch = false) {
   const seenIds = new Set();
   const seenTitles = new Set();
@@ -93,9 +122,9 @@ function makeUnique(list, isSearch = false) {
     seenIds.add(itemId);
 
     if (!isSearch && item.title) {
-      const titleKey = item.title.trim().toLowerCase();
-      if (seenTitles.has(titleKey)) return false;
-      seenTitles.add(titleKey);
+      const coreTitle = getCoreTitle(item.title);
+      if (seenTitles.has(coreTitle)) return false;
+      seenTitles.add(coreTitle);
     }
     return true;
   });
