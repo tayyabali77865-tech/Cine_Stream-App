@@ -221,7 +221,38 @@ function getStringSimilarity(title, query) {
 }
 
 function sortMediaList(list, isSearchActive, queryOrFilter) {
-  return list;
+  if (isSearchActive && queryOrFilter) {
+    return [...list].sort((a, b) => {
+      const simA = getStringSimilarity(a.title, queryOrFilter);
+      const simB = getStringSimilarity(b.title, queryOrFilter);
+      
+      // Descending order of similarity (100% match, then 99%, then 98% etc.)
+      if (simB !== simA) return simB - simA;
+      
+      // Fallback to rating if similarity is exactly equal
+      const ratingA = parseFloat(a.rating) || 0;
+      const ratingB = parseFloat(b.rating) || 0;
+      return ratingB - ratingA;
+    });
+  }
+
+  return [...list].sort((a, b) => {
+    // Always sort by rating first (highest first)
+    const ratingA = parseFloat(a.rating) || 0;
+    const ratingB = parseFloat(b.rating) || 0;
+    if (ratingB !== ratingA) return ratingB - ratingA;
+
+    // Secondary: language priority (Hindi > English > others > Original)
+    const langA = detectLanguage(a.title);
+    const langB = detectLanguage(b.title);
+    const getPriority = (lang) => {
+      if (lang === 'Hindi') return 1;
+      if (lang === 'English') return 2;
+      if (lang === 'Original') return 4;
+      return 3;
+    };
+    return getPriority(langA) - getPriority(langB);
+  });
 }
 
 // ─── getItemLayout for 2-column FlatList ──────────────────────────────────────
@@ -515,7 +546,7 @@ export default function HomeScreen({ navigation }) {
         return;
       }
 
-      setMediaList(makeUnique(allResults)); // Directly render original search results from API
+      setMediaList(sortMediaList(makeUnique(allResults), true, trimmed));
       setPage(0);
     } catch (e) {
       console.error('[Search] Error:', e);
@@ -587,7 +618,7 @@ export default function HomeScreen({ navigation }) {
       }
 
       if (accumulatedData.length > 0) {
-        setMediaList(prev => makeUnique([...prev, ...accumulatedData]));
+        setMediaList(prev => sortMediaList(makeUnique([...prev, ...accumulatedData]), true, query));
         setPage(currentPage);
       } else {
         setHasMore(false);
