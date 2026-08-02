@@ -214,6 +214,43 @@ function getStringSimilarity(title, query) {
 }
 
 function sortMediaList(list, isSearchActive, queryOrFilter) {
+  if (isSearchActive && queryOrFilter) {
+    return [...list].sort((a, b) => {
+      const simA = getStringSimilarity(a.title, queryOrFilter);
+      const simB = getStringSimilarity(b.title, queryOrFilter);
+      
+      // Descending order of similarity (100% match, then 99%, then 98% etc.)
+      if (simB !== simA) return simB - simA;
+      
+      // Fallback to rating if similarity is exactly equal
+      const ratingA = parseFloat(a.rating) || 0;
+      const ratingB = parseFloat(b.rating) || 0;
+      return ratingB - ratingA;
+    });
+  }
+
+  // Only apply custom sorting for language filters (Hindi/English)
+  if (queryOrFilter === 'Hindi' || queryOrFilter === 'English') {
+    return [...list].sort((a, b) => {
+      // Always sort by rating first (highest first)
+      const ratingA = parseFloat(a.rating) || 0;
+      const ratingB = parseFloat(b.rating) || 0;
+      if (ratingB !== ratingA) return ratingB - ratingA;
+
+      // Secondary: language priority (Hindi > English > others > Original)
+      const langA = detectLanguage(a.title);
+      const langB = detectLanguage(b.title);
+      const getPriority = (lang) => {
+        if (lang === 'Hindi') return 1;
+        if (lang === 'English') return 2;
+        if (lang === 'Original') return 4;
+        return 3;
+      };
+      return getPriority(langA) - getPriority(langB);
+    });
+  }
+
+  // Otherwise, return unmodified (keeps Netmirror's trending/natural order)
   return list;
 }
 
