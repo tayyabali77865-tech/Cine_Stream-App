@@ -257,47 +257,27 @@ app.get('/api/trending', async (req, res) => {
   const page = req.query.page || 0;
   const filter = req.query.filter || 'Latest';
   const category = req.query.category || 'All';
+  const cacheKey = `${category}_${filter}_${page}`;
 
   try {
-    let useTrandingApi = false;
-    let trandingId = '';
+    let queryParams = 'sort_by=date';
 
     if (filter === 'Trending') {
-      useTrandingApi = true;
-      trandingId = '25';
+      queryParams = 'sort_by=date';
     } else if (filter === 'Hollywood') {
-      useTrandingApi = true;
-      trandingId = '13';
+      queryParams = 'sort_by=date&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
     } else if (filter === 'Bollywood') {
-      useTrandingApi = true;
-      trandingId = '14';
+      queryParams = 'sort_by=date&country=india';
+    } else if (filter === 'Korean') {
+      queryParams = 'sort_by=date&country=Korea';
+    } else if (filter === 'Chinese') {
+      queryParams = 'sort_by=date&country=China';
     } else if (filter === 'South Indian') {
-      useTrandingApi = true;
-      trandingId = '15';
-    }
-
-    let endpoint = '';
-    if (useTrandingApi) {
-      endpoint = `/tranding?id=${trandingId}&page=${page}`;
-    } else {
-      let typeQuery = '';
-      if (category === 'Movies') {
-        typeQuery = '&type=1';
-      } else if (category === 'Series') {
-        typeQuery = '&type=2';
-      }
-
-      let filterQuery = '';
-      if (filter === 'Korean') {
-        filterQuery = '&country=Korea';
-      } else if (filter === 'Chinese') {
-        filterQuery = '&country=China';
-      }
-      endpoint = `/movies/list/filter?page=${page}${typeQuery}${filterQuery}`;
+      queryParams = 'sort_by=date';
     }
 
     if (category === 'Anime') {
-      const endpoint = `/movies/list/filter?page=${page}&genre_ids[]=10&genre_ids[]=6`;
+      const endpoint = `/movies/filter?sort_by=date&country=Japan&items_per_page=30&page=${page}`;
       const { value: data, status } = await catalogCache.get(endpoint);
       const results = data.results || [];
 
@@ -321,59 +301,15 @@ app.get('/api/trending', async (req, res) => {
       return res.json(mediaList);
     }
 
-    let results = [];
-    let status = 'MISS';
-
-    if (useTrandingApi) {
-      let currentPage = parseInt(page, 10) || 0;
-      let scanCount = 0;
-      const targetCount = 15;
-
-      while (results.length < targetCount && scanCount < 5) {
-        const pageEndpoint = `/tranding?id=${trandingId}&page=${currentPage}`;
-        const cacheRes = await catalogCache.get(pageEndpoint);
-        status = cacheRes.status;
-        const pageResults = cacheRes.value.results || [];
-        if (pageResults.length === 0) break;
-
-        const filtered = pageResults.filter(item => {
-          const typeLower = (item.media_type || '').toLowerCase();
-          if (category === 'Movies') {
-            return typeLower === 'movie' || typeLower === 'movie/';
-          }
-          if (category === 'Series') {
-            return typeLower === 'tv' || typeLower === 'tv show' || typeLower === 'series';
-          }
-          return true;
-        });
-
-        results = [...results, ...filtered];
-        currentPage++;
-        scanCount++;
-      }
-
-      // Fallback: If we scanned pages and got absolutely nothing (e.g. TV Shows for Hollywood/Bollywood which are movie-only lists)
-      // Fall back to the explore list API so the section is not empty!
-      if (results.length === 0 && category !== 'All') {
-        let typeQuery = category === 'Movies' ? '&type=1' : '&type=2';
-        let filterQuery = '';
-        if (filter === 'Hollywood') {
-          filterQuery = '&dubbing=Hindi&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
-        } else if (filter === 'Bollywood') {
-          filterQuery = '&dubbing=Hindi&country=india';
-        } else if (filter === 'South Indian') {
-          filterQuery = '&country=india';
-        }
-        const fallbackEndpoint = `/movies/list/filter?page=${page}${typeQuery}${filterQuery}`;
-        const cacheRes = await catalogCache.get(fallbackEndpoint);
-        status = cacheRes.status;
-        results = cacheRes.value.results || [];
-      }
-    } else {
-      const cacheRes = await catalogCache.get(endpoint);
-      status = cacheRes.status;
-      results = cacheRes.value.results || [];
+    if (category === 'Movies') {
+      queryParams += '&type=1';
+    } else if (category === 'Series') {
+      queryParams += '&type=2';
     }
+
+    const endpoint = `/movies/filter?${queryParams}&items_per_page=30&page=${page}`;
+    const { value: data, status } = await catalogCache.get(endpoint);
+    const results = data.results || [];
 
     // isDeleted + isCustom are async — resolve both with Promise.all
     const deletedFlags = await Promise.all(results.map(item => isDeleted(item.id)));
