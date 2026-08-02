@@ -68,6 +68,20 @@ const SEARCH_LANGUAGES = ['All', 'Hindi', 'English', 'Original', 'Tamil', 'Benga
  */
 function detectLanguage(title) {
   if (!title) return 'Original';
+
+  // 1. Try to find bracketed language suffix: e.g. [Hindi], (English), [Hindi-English]
+  const bracketMatch = title.match(/[\[\()]([a-zA-Z\s\-]+)[\]\)]\s*$/);
+  if (bracketMatch) {
+    const candidate = bracketMatch[1].trim();
+    const candidateLower = candidate.toLowerCase();
+    for (const lang of LANGUAGES) {
+      if (candidateLower.includes(lang.toLowerCase())) {
+        return candidate.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('-');
+      }
+    }
+  }
+
+  // 2. Fallback to normal title scanning
   const titleLower = title.toLowerCase();
   for (const lang of LANGUAGES) {
     if (titleLower.includes(lang.toLowerCase())) return lang;

@@ -730,7 +730,9 @@ export default function PlayerScreen({ route, navigation }) {
                     </TouchableOpacity>
 
                     {(!playbackStatus || !playbackStatus.isLoaded || isBuffering) ? (
-                      <ActivityIndicator size="large" color="#E50914" style={playBtnSizeStyle} />
+                      <View style={{ width: isLandscape ? 52 : 60, height: isLandscape ? 52 : 60, alignItems: 'center', justifyContent: 'center' }}>
+                        <ActivityIndicator size="large" color="#E50914" />
+                      </View>
                     ) : (
                       <TouchableOpacity style={playBtnSizeStyle} onPress={togglePlay}>
                         <Ionicons name={isPlaying ? "pause" : "play"} size={isLandscape ? 36 : 28} color="#FFF" />
