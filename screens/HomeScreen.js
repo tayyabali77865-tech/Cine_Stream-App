@@ -102,7 +102,7 @@ function getCoreTitle(title) {
   let cleaned = title.toLowerCase();
   cleaned = cleaned.replace(/\[.*?\]/g, ' ');
   cleaned = cleaned.replace(/\(.*?\)/g, ' ');
-  
+
   const noiseWords = [
     /\bin hindi\b/g,
     /\bin english\b/g,
@@ -124,14 +124,14 @@ function getCoreTitle(title) {
     /\bs\d+\b/g,
     /\bpart\s*\d+\b/g
   ];
-  
+
   noiseWords.forEach(pattern => {
     cleaned = cleaned.replace(pattern, ' ');
   });
-  
+
   return cleaned.replace(/[^a-z0-9\s]/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim();
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function makeUnique(list, isSearch = false) {
@@ -251,10 +251,10 @@ function sortMediaList(list, isSearchActive, queryOrFilter) {
     return [...list].sort((a, b) => {
       const simA = getStringSimilarity(a.title, queryOrFilter);
       const simB = getStringSimilarity(b.title, queryOrFilter);
-      
+
       // Descending order of similarity (100% match, then 99%, then 98% etc.)
       if (simB !== simA) return simB - simA;
-      
+
       // Fallback to rating if similarity is exactly equal
       const ratingA = parseFloat(a.rating) || 0;
       const ratingB = parseFloat(b.rating) || 0;
@@ -497,8 +497,8 @@ export default function HomeScreen({ navigation }) {
       while (accumulatedData.length < targetCount && !reachedEnd) {
         const pageBatch = [currentPage, currentPage + 1, currentPage + 2];
         console.log(`[LoadMore] Fetching subsequent pages ${pageBatch.join(', ')} in parallel`);
-        
-        const fetchPromises = pageBatch.map(pageIndex => 
+
+        const fetchPromises = pageBatch.map(pageIndex =>
           apiService.getTrendingMedia(pageIndex, currentFilter, currentCategory)
             .catch(err => {
               console.warn(`[LoadMore] Failed to fetch page ${pageIndex}:`, err.message);
@@ -535,7 +535,7 @@ export default function HomeScreen({ navigation }) {
             break;
           }
         }
-        
+
         if (accumulatedData.length >= targetCount) {
           break;
         }
@@ -951,11 +951,21 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.retryBtnText}>Retry Connection</Text>
           </TouchableOpacity>
         </View>
+      ) : loading ? (
+        <FlatList
+          key="skeleton-list"
+          data={SKELETON_DATA}
+          numColumns={2}
+          contentContainerStyle={styles.listContainer}
+          columnWrapperStyle={styles.columnWrapper}
+          renderItem={renderSkeletonItem}
+          keyExtractor={item => item.id}
+        />
       ) : (
         <FlatList
           key="media-list"
-          data={loading ? SKELETON_DATA : paddedMediaList}
-          renderItem={loading ? renderSkeletonItem : renderCard}
+          data={paddedMediaList}
+          renderItem={renderCard}
           keyExtractor={item => item.id}
           numColumns={2}
           contentContainerStyle={[styles.listContainer, { paddingBottom: 85 }]}
@@ -965,11 +975,11 @@ export default function HomeScreen({ navigation }) {
           updateCellsBatchingPeriod={30}
           windowSize={8}
           initialNumToRender={10}
-          ListEmptyComponent={loading ? null : listEmpty}
-          onEndReached={loading ? null : handleLoadMore}
+          ListEmptyComponent={listEmpty}
+          onEndReached={handleLoadMore}
           onEndReachedThreshold={0.3}
-          ListFooterComponent={loading ? null : <ListFooter loadingMore={loadingMore} />}
-          extraData={loading ? loading : loadingMore}
+          ListFooterComponent={<ListFooter loadingMore={loadingMore} />}
+          extraData={loadingMore}
         />
       )}
 
