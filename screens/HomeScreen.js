@@ -99,8 +99,16 @@ function getCoreTitle(title) {
     /\bdubbed\b/g,
     /\bmulti audio\b/g,
     /\borg audio\b/g,
+    /\bdual audio\b/g,
+    /\borg\b/g,
+    /\bweb-dl\b/g,
+    /\bhdtv\b/g,
+    /\bmulti\b/g,
+    /\bsubbed\b/g,
+    /\bsub\b/g,
     /\bseason\s*\d+\b/g,
-    /\bs\d+\b/g
+    /\bs\d+\b/g,
+    /\bpart\s*\d+\b/g
   ];
   
   noiseWords.forEach(pattern => {

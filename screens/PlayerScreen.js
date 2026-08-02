@@ -729,9 +729,13 @@ export default function PlayerScreen({ route, navigation }) {
                       <Text style={styles.seekText}>-10s</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={playBtnSizeStyle} onPress={togglePlay}>
-                      <Ionicons name={isPlaying ? "pause" : "play"} size={isLandscape ? 36 : 28} color="#FFF" />
-                    </TouchableOpacity>
+                    {(!playbackStatus || !playbackStatus.isLoaded || isBuffering) ? (
+                      <ActivityIndicator size="large" color="#E50914" style={playBtnSizeStyle} />
+                    ) : (
+                      <TouchableOpacity style={playBtnSizeStyle} onPress={togglePlay}>
+                        <Ionicons name={isPlaying ? "pause" : "play"} size={isLandscape ? 36 : 28} color="#FFF" />
+                      </TouchableOpacity>
+                    )}
 
                     <TouchableOpacity style={ctrlBtnSizeStyle} onPress={() => seekDelta(10000)}>
                       <Ionicons name="play-forward" size={isLandscape ? 26 : 22} color="#FFF" />
