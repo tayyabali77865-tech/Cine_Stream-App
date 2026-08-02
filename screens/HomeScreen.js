@@ -103,10 +103,10 @@ function applyClientSideFilter(list, filterName, categoryName) {
       const channelLower = (item.channel || '').toLowerCase();
 
       if (categoryName === 'Movies') {
-        return typeLower === 'movie' && countryLower !== 'japan' && !channelLower.includes('anime') && !titleLower.includes('anime');
+        return true;
       }
       if (categoryName === 'Series') {
-        return typeLower === 'tv show' && countryLower !== 'japan' && !channelLower.includes('anime') && !titleLower.includes('anime');
+        return true;
       }
       if (categoryName === 'Anime') {
         return true;

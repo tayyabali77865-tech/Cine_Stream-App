@@ -257,23 +257,26 @@ app.get('/api/trending', async (req, res) => {
   const page = req.query.page || 0;
   const filter = req.query.filter || 'Latest';
   const category = req.query.category || 'All';
-  const cacheKey = `${category}_${filter}_${page}`;
 
   try {
-    let queryParams = 'sort_by=date';
+    let typeQuery = '';
+    if (category === 'Movies') {
+      typeQuery = '&type=1';
+    } else if (category === 'Series') {
+      typeQuery = '&type=2';
+    }
 
-    if (filter === 'Trending') {
-      queryParams = 'sort_by=date';
-    } else if (filter === 'Hollywood') {
-      queryParams = 'sort_by=date&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
+    let filterQuery = '';
+    if (filter === 'Hollywood') {
+      filterQuery = '&dubbing=Hindi&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
     } else if (filter === 'Bollywood') {
-      queryParams = 'sort_by=date&country=india';
+      filterQuery = '&dubbing=Hindi&country=india';
     } else if (filter === 'Korean') {
-      queryParams = 'sort_by=date&country=Korea';
+      filterQuery = '&country=Korea';
     } else if (filter === 'Chinese') {
-      queryParams = 'sort_by=date&country=China';
+      filterQuery = '&country=China';
     } else if (filter === 'South Indian') {
-      queryParams = 'sort_by=date';
+      filterQuery = '&country=india';
     }
 
     if (category === 'Anime') {
@@ -301,13 +304,8 @@ app.get('/api/trending', async (req, res) => {
       return res.json(mediaList);
     }
 
-    if (category === 'Movies') {
-      queryParams += '&type=1';
-    } else if (category === 'Series') {
-      queryParams += '&type=2';
-    }
 
-    const endpoint = `/movies/filter?${queryParams}&items_per_page=30&page=${page}`;
+    const endpoint = `/movies/list/filter?page=${page}${typeQuery}${filterQuery}`;
     const { value: data, status } = await catalogCache.get(endpoint);
     const results = data.results || [];
 
