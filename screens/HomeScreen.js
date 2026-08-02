@@ -951,21 +951,11 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.retryBtnText}>Retry Connection</Text>
           </TouchableOpacity>
         </View>
-      ) : loading ? (
-        <FlatList
-          key="skeleton-list"
-          data={SKELETON_DATA}
-          numColumns={2}
-          contentContainerStyle={styles.listContainer}
-          columnWrapperStyle={styles.columnWrapper}
-          renderItem={renderSkeletonItem}
-          keyExtractor={item => item.id}
-        />
       ) : (
         <FlatList
           key="media-list"
-          data={paddedMediaList}
-          renderItem={renderCard}
+          data={loading ? SKELETON_DATA : paddedMediaList}
+          renderItem={loading ? renderSkeletonItem : renderCard}
           keyExtractor={item => item.id}
           numColumns={2}
           contentContainerStyle={[styles.listContainer, { paddingBottom: 85 }]}
@@ -975,11 +965,11 @@ export default function HomeScreen({ navigation }) {
           updateCellsBatchingPeriod={30}
           windowSize={8}
           initialNumToRender={10}
-          ListEmptyComponent={listEmpty}
-          onEndReached={handleLoadMore}
+          ListEmptyComponent={loading ? null : listEmpty}
+          onEndReached={loading ? null : handleLoadMore}
           onEndReachedThreshold={0.3}
-          ListFooterComponent={<ListFooter loadingMore={loadingMore} />}
-          extraData={loadingMore}
+          ListFooterComponent={loading ? null : <ListFooter loadingMore={loadingMore} />}
+          extraData={loading ? loading : loadingMore}
         />
       )}
 
