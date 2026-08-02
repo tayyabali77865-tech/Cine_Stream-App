@@ -539,7 +539,7 @@ export default function HomeScreen({ navigation }) {
         return;
       }
 
-      setMediaList(makeUnique(allResults)); // Directly render original search results from API
+      setMediaList(sortMediaList(makeUnique(allResults), true, trimmed));
       setPage(0);
     } catch (e) {
       console.error('[Search] Error:', e);
@@ -611,7 +611,7 @@ export default function HomeScreen({ navigation }) {
       }
 
       if (accumulatedData.length > 0) {
-        setMediaList(prev => makeUnique([...prev, ...accumulatedData]));
+        setMediaList(prev => sortMediaList(makeUnique([...prev, ...accumulatedData]), true, query));
         setPage(currentPage);
       } else {
         setHasMore(false);
