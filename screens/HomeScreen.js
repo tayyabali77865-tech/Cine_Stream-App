@@ -83,11 +83,20 @@ function getDisplayBadge(item, activeCategory) {
   return 'Movie';
 }
 
-function makeUnique(list) {
+function makeUnique(list, isSearch = false) {
   const seenIds = new Set();
+  const seenTitles = new Set();
   return list.filter(item => {
-    if (!item || !item.id || seenIds.has(item.id)) return false;
-    seenIds.add(item.id);
+    if (!item || !item.id) return false;
+    const itemId = String(item.id);
+    if (seenIds.has(itemId)) return false;
+    seenIds.add(itemId);
+
+    if (!isSearch && item.title) {
+      const titleKey = item.title.trim().toLowerCase();
+      if (seenTitles.has(titleKey)) return false;
+      seenTitles.add(titleKey);
+    }
     return true;
   });
 }
@@ -480,10 +489,10 @@ export default function HomeScreen({ navigation }) {
       }
 
       if (targetPage === 0 && !isLoadMore) {
-        setMediaList(sortMediaList(makeUnique(accumulatedData), false, currentFilter));
+        setMediaList(sortMediaList(makeUnique(accumulatedData, false), false, currentFilter));
       } else {
         const sortedNewBatch = sortMediaList(accumulatedData, false, currentFilter);
-        setMediaList(prev => makeUnique([...prev, ...sortedNewBatch]));
+        setMediaList(prev => makeUnique([...prev, ...sortedNewBatch], false));
       }
       setPage(currentPage);
     } catch (e) {
@@ -546,7 +555,7 @@ export default function HomeScreen({ navigation }) {
         return;
       }
 
-      setMediaList(sortMediaList(makeUnique(allResults), true, trimmed));
+      setMediaList(sortMediaList(makeUnique(allResults, true), true, trimmed));
       setPage(0);
     } catch (e) {
       console.error('[Search] Error:', e);
@@ -618,7 +627,7 @@ export default function HomeScreen({ navigation }) {
       }
 
       if (accumulatedData.length > 0) {
-        setMediaList(prev => sortMediaList(makeUnique([...prev, ...accumulatedData]), true, query));
+        setMediaList(prev => sortMediaList(makeUnique([...prev, ...accumulatedData], true), true, query));
         setPage(currentPage);
       } else {
         setHasMore(false);
