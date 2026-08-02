@@ -491,6 +491,8 @@ export default function HomeScreen({ navigation }) {
           break;
         }
 
+        currentPage++;
+
         const filteredData = applyClientSideFilter(rawData, currentFilter, currentCategory);
 
         // Deduplicate with existing list and accumulated batch
@@ -504,8 +506,6 @@ export default function HomeScreen({ navigation }) {
         if (accumulatedData.length >= targetCount) {
           break;
         }
-
-        currentPage++;
       }
 
       if (accumulatedData.length === 0 && targetPage === 0) {
