@@ -497,7 +497,7 @@ export default function HomeScreen({ navigation }) {
           apiService.getTrendingMedia(pageIndex, currentFilter, currentCategory)
             .catch(err => {
               console.warn(`[LoadMore] Failed to fetch page ${pageIndex}:`, err.message);
-              return [];
+              throw err;
             })
         );
 
