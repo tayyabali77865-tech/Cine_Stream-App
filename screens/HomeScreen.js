@@ -41,9 +41,9 @@ const SKELETON_DATA = Array.from({ length: 6 }, (_, i) => ({ id: `skeleton-${i}`
 
 // Filter and category lists — module-level constants
 // Filters per category
-const FILTER_LIST_ALL    = ['Trending', 'Latest', 'Hollywood', 'Bollywood', 'Korean', 'Chinese', 'South Indian'];
-const FILTER_LIST_ANIME  = ['Trending', 'Latest', 'Hindi', 'English'];
-const CATEGORY_LIST      = ['All', 'Movies', 'Series', 'Anime'];
+const FILTER_LIST_ALL = ['Trending', 'Latest', 'Hollywood', 'Bollywood', 'Korean', 'Chinese', 'South Indian'];
+const FILTER_LIST_ANIME = ['Trending', 'Latest', 'Hindi', 'English'];
+const CATEGORY_LIST = ['All', 'Movies', 'Series', 'Anime'];
 
 // Helper: get filters for the active category
 function getFilterList(category) {
@@ -83,64 +83,11 @@ function getDisplayBadge(item, activeCategory) {
   return 'Movie';
 }
 
-function getItemCategory(item) {
-  if (!item) return 'Movie';
-  const titleLower = (item.title || '').toLowerCase();
-  const countryLower = (item.country || '').toLowerCase();
-  const channelLower = (item.channel || '').toLowerCase();
-  const typeLower = (item.type || '').toLowerCase();
-
-  const isAnime = countryLower === 'japan' ||
-                  channelLower.includes('anime') ||
-                  titleLower.includes('anime') ||
-                  titleLower.includes('naruto') ||
-                  titleLower.includes('boruto') ||
-                  titleLower.includes('jujutsu') ||
-                  titleLower.includes('one piece') ||
-                  titleLower.includes('demon slayer');
-  if (isAnime) return 'Anime';
-
-  if (typeLower === 'tv show' || typeLower === 'tv' || typeLower === 'series') {
-    return 'TV Show';
-  }
-  return 'Movie';
-}
-
-function interleaveCategories(list) {
-  const movies = [];
-  const tvShows = [];
-  const anime = [];
-
-  list.forEach(item => {
-    const cat = getItemCategory(item);
-    if (cat === 'Anime') {
-      anime.push(item);
-    } else if (cat === 'TV Show') {
-      tvShows.push(item);
-    } else {
-      movies.push(item);
-    }
-  });
-
-  const result = [];
-  const maxLength = Math.max(movies.length, tvShows.length, anime.length);
-
-  for (let i = 0; i < maxLength; i++) {
-    if (i < movies.length) result.push(movies[i]);
-    if (i < tvShows.length) result.push(tvShows[i]);
-    if (i < anime.length) result.push(anime[i]);
-  }
-
-  return result;
-}
-
 function makeUnique(list) {
   const seenIds = new Set();
   return list.filter(item => {
-    if (!item || !item.id) return false;
-    const itemId = String(item.id);
-    if (seenIds.has(itemId)) return false;
-    seenIds.add(itemId);
+    if (!item || !item.id || seenIds.has(item.id)) return false;
+    seenIds.add(item.id);
     return true;
   });
 }
@@ -162,14 +109,7 @@ function applyClientSideFilter(list, filterName, categoryName) {
         return typeLower === 'tv show' && countryLower !== 'japan' && !channelLower.includes('anime') && !titleLower.includes('anime');
       }
       if (categoryName === 'Anime') {
-        return countryLower === 'japan' ||
-               channelLower.includes('anime') ||
-               titleLower.includes('anime') ||
-               titleLower.includes('naruto') ||
-               titleLower.includes('boruto') ||
-               titleLower.includes('jujutsu') ||
-               titleLower.includes('one piece') ||
-               titleLower.includes('demon slayer');
+        return true;
       }
       return true;
     });
@@ -187,25 +127,25 @@ function applyClientSideFilter(list, filterName, categoryName) {
       }
       if (filterName === 'English') {
         return langLower.includes('english') || titleLower.includes('english') ||
-               (countryLower === 'us' || countryLower === 'united states' || countryLower === 'uk');
+          (countryLower === 'us' || countryLower === 'united states' || countryLower === 'uk');
       }
 
       // Regional filters (All/Movies/Series categories)
       if (filterName === 'Bollywood') {
         return countryLower === 'india' &&
-               !titleLower.includes('tamil') &&
-               !titleLower.includes('telugu') &&
-               !titleLower.includes('malayalam') &&
-               !titleLower.includes('kannada');
+          !titleLower.includes('tamil') &&
+          !titleLower.includes('telugu') &&
+          !titleLower.includes('malayalam') &&
+          !titleLower.includes('kannada');
       }
       if (filterName === 'Hollywood') {
         return countryLower !== 'india' &&
-               countryLower !== 'korea' &&
-               countryLower !== 'china' &&
-               countryLower !== 'japan' &&
-               !titleLower.includes('korean') &&
-               !titleLower.includes('chinese') &&
-               !titleLower.includes('japanese');
+          countryLower !== 'korea' &&
+          countryLower !== 'china' &&
+          countryLower !== 'japan' &&
+          !titleLower.includes('korean') &&
+          !titleLower.includes('chinese') &&
+          !titleLower.includes('japanese');
       }
       if (filterName === 'Korean') {
         return countryLower === 'korea' || countryLower === 'south korea' || titleLower.includes('korean');
@@ -235,11 +175,11 @@ function applyClientSideFilter(list, filterName, categoryName) {
 function cleanTitleForMatching(title) {
   if (!title) return '';
   return title.toLowerCase()
-              .replace(/\[.*?\]/g, '') // Remove brackets [Hindi], [English]
-              .replace(/\(.*?\)/g, '') // Remove parentheses (Dubbed)
-              .replace(/[^a-z0-9\s]/g, '') // Strip special characters
-              .replace(/\s+/g, ' ') // Normalize spaces
-              .trim();
+    .replace(/\[.*?\]/g, '') // Remove brackets [Hindi], [English]
+    .replace(/\(.*?\)/g, '') // Remove parentheses (Dubbed)
+    .replace(/[^a-z0-9\s]/g, '') // Strip special characters
+    .replace(/\s+/g, ' ') // Normalize spaces
+    .trim();
 }
 
 /**
@@ -252,12 +192,12 @@ function getStringSimilarity(title, query) {
   const q = cleanTitleForMatching(query);
 
   if (t === q) return 100.0; // 100% Exact match (excluding metadata brackets)
-  
+
   if (t.startsWith(q)) {
     // High priority for starts-with (e.g. "Naruto" in "Naruto: Shippuden")
     return 50.0 + (q.length / t.length) * 10.0;
   }
-  
+
   if (t.includes(q)) {
     // Medium priority for substring match
     return 10.0 + (q.length / t.length) * 5.0;
@@ -480,7 +420,7 @@ export default function HomeScreen({ navigation }) {
         }
 
         const filteredData = applyClientSideFilter(rawData, currentFilter, currentCategory);
-        
+
         // Deduplicate with existing list and accumulated batch
         const existingIds = new Set(isLoadMore ? mediaListRef.current.map(item => item.id) : []);
         const newUniqueItems = filteredData.filter(
@@ -502,18 +442,10 @@ export default function HomeScreen({ navigation }) {
       }
 
       if (targetPage === 0 && !isLoadMore) {
-        let finalData = makeUnique(accumulatedData);
-        if (currentCategory === 'All') {
-          finalData = interleaveCategories(finalData);
-        }
-        setMediaList(sortMediaList(finalData, false, currentFilter));
+        setMediaList(sortMediaList(makeUnique(accumulatedData), false, currentFilter));
       } else {
         const sortedNewBatch = sortMediaList(accumulatedData, false, currentFilter);
-        let finalData = makeUnique([...prev, ...sortedNewBatch]);
-        if (currentCategory === 'All') {
-          finalData = interleaveCategories(finalData);
-        }
-        setMediaList(finalData);
+        setMediaList(prev => makeUnique([...prev, ...sortedNewBatch]));
       }
       setPage(currentPage);
     } catch (e) {
@@ -545,11 +477,11 @@ export default function HomeScreen({ navigation }) {
       setSearchLanguage('All'); // Reset search language to 'All' on new search
       setShowSearchFilterMenu(false); // Hide the language menu
       console.log(`[Search] Triggering search API for query: "${trimmed}"`);
-      
+
       let allResults = [];
       let pageNum = 0;
       const maxSearchPages = 8; // Fetch up to 8 pages of results at once
-      
+
       while (pageNum < maxSearchPages) {
         console.log(`[Search] Fetching page ${pageNum} for query: "${trimmed}"`);
         const pageData = await apiService.searchMedia(trimmed, pageNum);
@@ -562,7 +494,7 @@ export default function HomeScreen({ navigation }) {
         }
         pageNum++;
       }
-      
+
       console.log(`[Search] Combined results count: ${allResults.length}`);
 
       // ✅ Discard results if the search query was cleared or changed in-flight
@@ -946,10 +878,10 @@ export default function HomeScreen({ navigation }) {
               activeOpacity={0.8}
               onPress={() => selectCategory(item.key)}
             >
-              <Ionicons 
-                name={currentIcon} 
-                size={22} 
-                color={isSelected ? '#E50914' : '#9CA3AF'} 
+              <Ionicons
+                name={currentIcon}
+                size={22}
+                color={isSelected ? '#E50914' : '#9CA3AF'}
               />
               <Text style={[styles.footerTabText, isSelected && styles.footerTabTextActive]}>
                 {item.label}

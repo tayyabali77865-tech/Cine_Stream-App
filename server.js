@@ -265,19 +265,19 @@ app.get('/api/trending', async (req, res) => {
     if (filter === 'Trending') {
       queryParams = 'sort_by=date';
     } else if (filter === 'Hollywood') {
-      queryParams = 'sort_by=date&dubbing=Hindi&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
+      queryParams = 'sort_by=date&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
     } else if (filter === 'Bollywood') {
-      queryParams = 'sort_by=date&dubbing=Hindi&country=india';
+      queryParams = 'sort_by=date&country=india';
     } else if (filter === 'Korean') {
       queryParams = 'sort_by=date&country=Korea';
     } else if (filter === 'Chinese') {
       queryParams = 'sort_by=date&country=China';
     } else if (filter === 'South Indian') {
-      queryParams = 'sort_by=date&country=india';
+      queryParams = 'sort_by=date';
     }
 
     if (category === 'Anime') {
-      const endpoint = `/movies/filter?sort_by=date&country=Japan&items_per_page=30&page=${page}`;
+      const endpoint = `/movies/list/filter?page=${page}&genre_ids[]=10&genre_ids[]=6`;
       const { value: data, status } = await catalogCache.get(endpoint);
       const results = data.results || [];
 
