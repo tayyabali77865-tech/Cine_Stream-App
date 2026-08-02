@@ -137,16 +137,16 @@ function applyClientSideFilter(list, filterName, categoryName) {
     filtered = filtered.filter(item => {
       const typeLower = (item.type || '').toLowerCase();
       const titleLower = item.title.toLowerCase();
-      const countryLower = (item.country || '').toLowerCase();
-      const channelLower = (item.channel || '').toLowerCase();
 
       if (categoryName === 'Movies') {
-        return typeLower === 'movie' && countryLower !== 'japan' && !channelLower.includes('anime') && !titleLower.includes('anime');
+        return typeLower === 'movie' || typeLower === 'movie/';
       }
       if (categoryName === 'Series') {
-        return typeLower === 'tv show' && countryLower !== 'japan' && !channelLower.includes('anime') && !titleLower.includes('anime');
+        return typeLower === 'tv show' || typeLower === 'tv' || typeLower === 'series';
       }
       if (categoryName === 'Anime') {
+        const countryLower = (item.country || '').toLowerCase();
+        const channelLower = (item.channel || '').toLowerCase();
         return countryLower === 'japan' ||
           channelLower.includes('anime') ||
           titleLower.includes('anime') ||
@@ -163,7 +163,6 @@ function applyClientSideFilter(list, filterName, categoryName) {
   if (filterName !== 'Latest' && filterName !== 'Trending') {
     filtered = filtered.filter(item => {
       const titleLower = item.title.toLowerCase();
-      const countryLower = (item.country || '').toLowerCase();
       const langLower = (item.language || '').toLowerCase();
 
       // Language filters (used in Anime category)
@@ -171,40 +170,24 @@ function applyClientSideFilter(list, filterName, categoryName) {
         return langLower.includes('hindi') || titleLower.includes('hindi');
       }
       if (filterName === 'English') {
-        return langLower.includes('english') || titleLower.includes('english') ||
-          (countryLower === 'us' || countryLower === 'united states' || countryLower === 'uk');
+        return langLower.includes('english') || titleLower.includes('english');
       }
 
-      // Regional filters (All/Movies/Series categories)
-      if (filterName === 'Bollywood') {
-        return countryLower === 'india' &&
-          !titleLower.includes('tamil') &&
-          !titleLower.includes('telugu') &&
-          !titleLower.includes('malayalam') &&
-          !titleLower.includes('kannada');
+      // Regional filters (already filtered by country on the server, so we trust server results)
+      if (filterName === 'Bollywood' || filterName === 'Hollywood' || filterName === 'Korean' || filterName === 'Chinese') {
+        return true;
       }
-      if (filterName === 'Hollywood') {
-        return countryLower !== 'india' &&
-          countryLower !== 'korea' &&
-          countryLower !== 'china' &&
-          countryLower !== 'japan' &&
-          !titleLower.includes('korean') &&
-          !titleLower.includes('chinese') &&
-          !titleLower.includes('japanese');
-      }
-      if (filterName === 'Korean') {
-        return countryLower === 'korea' || countryLower === 'south korea' || titleLower.includes('korean');
-      }
-      if (filterName === 'Chinese') {
-        return countryLower === 'china' || countryLower === 'hong kong' || titleLower.includes('chinese');
-      }
+
+      // South Indian regional filter
       if (filterName === 'South Indian') {
-        return countryLower === 'india' && (
-          titleLower.includes('tamil') ||
+        return titleLower.includes('tamil') ||
           titleLower.includes('telugu') ||
           titleLower.includes('malayalam') ||
-          titleLower.includes('kannada')
-        );
+          titleLower.includes('kannada') ||
+          langLower.includes('tamil') ||
+          langLower.includes('telugu') ||
+          langLower.includes('malayalam') ||
+          langLower.includes('kannada');
       }
       return true;
     });
