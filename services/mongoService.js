@@ -245,6 +245,47 @@ async function getAllReportedErrors() {
   }
 }
 
+async function batchGetDeleted(ids) {
+  const idsStr = ids.map(String);
+  if (!isConnected) {
+    const deletedSet = new Set();
+    fallbackDeletedIds.forEach(item => {
+      const idStr = typeof item === 'object' ? item.id : String(item);
+      if (idsStr.includes(idStr)) deletedSet.add(idStr);
+    });
+    return deletedSet;
+  }
+  try {
+    const docs = await DeletedMedia.find({ id: { $in: idsStr } }).lean();
+    return new Set(docs.map(doc => doc.id));
+  } catch (err) {
+    console.error('[MongoDB] batchGetDeleted error:', err.message);
+    return new Set();
+  }
+}
+
+async function batchGetOverrides(ids) {
+  const idsStr = ids.map(String);
+  if (!isConnected) {
+    const overridesMap = new Map();
+    idsStr.forEach(id => {
+      if (fallbackOverrides[id]) overridesMap.set(id, fallbackOverrides[id]);
+    });
+    return overridesMap;
+  }
+  try {
+    const docs = await CustomOverride.find({ id: { $in: idsStr } }).lean();
+    const overridesMap = new Map();
+    docs.forEach(doc => {
+      overridesMap.set(doc.id, doc.links);
+    });
+    return overridesMap;
+  } catch (err) {
+    console.error('[MongoDB] batchGetOverrides error:', err.message);
+    return new Map();
+  }
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -259,5 +300,7 @@ module.exports = {
   deleteOverride,
   addReportedError,
   removeReportedError,
-  getAllReportedErrors
+  getAllReportedErrors,
+  batchGetDeleted,
+  batchGetOverrides
 };

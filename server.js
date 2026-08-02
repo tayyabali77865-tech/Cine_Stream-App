@@ -401,10 +401,14 @@ app.get('/api/trending', async (req, res) => {
       }
     }
 
-    // isDeleted + isCustom are async — resolve both with Promise.all
-    const deletedFlags = await Promise.all(results.map(item => isDeleted(item.id)));
-    const customFlags = await Promise.all(results.map(item => db.getOverride(String(item.id))));
-    const filteredItems = results.filter((_, i) => !deletedFlags[i]);
+    // Batch lookup all deleted IDs and overrides in one go (massive speedup!)
+    const itemIds = results.map(item => String(item.id));
+    const [deletedIdsSet, overridesMap] = await Promise.all([
+      db.batchGetDeleted(itemIds),
+      db.batchGetOverrides(itemIds)
+    ]);
+
+    const filteredItems = results.filter(item => !deletedIdsSet.has(String(item.id)));
     const mediaList = filteredItems.map((item) => ({
       id: item.id,
       title: item.title ? item.title.trim() : 'Unknown Title',
@@ -414,7 +418,7 @@ app.get('/api/trending', async (req, res) => {
       country: item.cn || '',
       channel: item.channel || '',
       rating: parseFloat(item.vote_average) || 0,
-      isCustom: !!(customFlags[results.indexOf(item)])
+      isCustom: overridesMap.has(String(item.id))
     }));
 
     res.setHeader('X-Cache-Status', status);
@@ -446,10 +450,12 @@ app.get('/api/search', async (req, res) => {
     const status = cacheRes ? cacheRes.status : 'MISS';
     const results = (data && data.results) ? data.results : [];
 
-    // isDeleted is now async — filter with Promise.all
-    const deletedFlags = await Promise.all(results.map(item => isDeleted(item.id)));
+    // Batch check deleted status for search results
+    const itemIds = results.map(item => String(item.id));
+    const deletedIdsSet = await db.batchGetDeleted(itemIds);
+
     const mediaList = results
-      .filter((_, i) => !deletedFlags[i])
+      .filter(item => !deletedIdsSet.has(String(item.id)))
       .map(item => ({
         id: item.id,
         title: item.title ? item.title.trim() : 'Unknown Title',
