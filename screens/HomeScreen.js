@@ -83,6 +83,57 @@ function getDisplayBadge(item, activeCategory) {
   return 'Movie';
 }
 
+function getItemCategory(item) {
+  if (!item) return 'Movie';
+  const titleLower = (item.title || '').toLowerCase();
+  const countryLower = (item.country || '').toLowerCase();
+  const channelLower = (item.channel || '').toLowerCase();
+  const typeLower = (item.type || '').toLowerCase();
+
+  const isAnime = countryLower === 'japan' ||
+                  channelLower.includes('anime') ||
+                  titleLower.includes('anime') ||
+                  titleLower.includes('naruto') ||
+                  titleLower.includes('boruto') ||
+                  titleLower.includes('jujutsu') ||
+                  titleLower.includes('one piece') ||
+                  titleLower.includes('demon slayer');
+  if (isAnime) return 'Anime';
+
+  if (typeLower === 'tv show' || typeLower === 'tv' || typeLower === 'series') {
+    return 'TV Show';
+  }
+  return 'Movie';
+}
+
+function interleaveCategories(list) {
+  const movies = [];
+  const tvShows = [];
+  const anime = [];
+
+  list.forEach(item => {
+    const cat = getItemCategory(item);
+    if (cat === 'Anime') {
+      anime.push(item);
+    } else if (cat === 'TV Show') {
+      tvShows.push(item);
+    } else {
+      movies.push(item);
+    }
+  });
+
+  const result = [];
+  const maxLength = Math.max(movies.length, tvShows.length, anime.length);
+
+  for (let i = 0; i < maxLength; i++) {
+    if (i < movies.length) result.push(movies[i]);
+    if (i < tvShows.length) result.push(tvShows[i]);
+    if (i < anime.length) result.push(anime[i]);
+  }
+
+  return result;
+}
+
 function makeUnique(list) {
   const seenIds = new Set();
   return list.filter(item => {
@@ -451,10 +502,18 @@ export default function HomeScreen({ navigation }) {
       }
 
       if (targetPage === 0 && !isLoadMore) {
-        setMediaList(sortMediaList(makeUnique(accumulatedData), false, currentFilter));
+        let finalData = makeUnique(accumulatedData);
+        if (currentCategory === 'All') {
+          finalData = interleaveCategories(finalData);
+        }
+        setMediaList(sortMediaList(finalData, false, currentFilter));
       } else {
         const sortedNewBatch = sortMediaList(accumulatedData, false, currentFilter);
-        setMediaList(prev => makeUnique([...prev, ...sortedNewBatch]));
+        let finalData = makeUnique([...prev, ...sortedNewBatch]);
+        if (currentCategory === 'All') {
+          finalData = interleaveCategories(finalData);
+        }
+        setMediaList(finalData);
       }
       setPage(currentPage);
     } catch (e) {
