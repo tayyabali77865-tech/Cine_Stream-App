@@ -302,7 +302,13 @@ app.get('/api/trending', async (req, res) => {
       if (results.length === 0) {
         let fallbackEndpoint = '';
         if (category === 'Anime') {
-          fallbackEndpoint = `/movies/list/filter?genre_ids[]=10&genre_ids[]=6&items_per_page=30&page=${page}`;
+          let queryParams = 'genre_ids[]=10&genre_ids[]=6';
+          if (filter === 'Hindi') {
+            queryParams += '&dubbing=Hindi';
+          } else if (filter === 'English') {
+            queryParams += '&dubbing=English';
+          }
+          fallbackEndpoint = `/movies/list/filter?${queryParams}&items_per_page=30&page=${page}`;
         } else if (category === 'All') {
           fallbackEndpoint = `/movies/filter?sort_by=date&items_per_page=30&page=${page}`;
         } else {
@@ -316,7 +322,13 @@ app.get('/api/trending', async (req, res) => {
     } else {
       // Non-trending, specific filters
       if (category === 'Anime') {
-        const endpoint = `/movies/list/filter?genre_ids[]=10&genre_ids[]=6&items_per_page=30&page=${page}`;
+        let queryParams = 'genre_ids[]=10&genre_ids[]=6';
+        if (filter === 'Hindi') {
+          queryParams += '&dubbing=Hindi';
+        } else if (filter === 'English') {
+          queryParams += '&dubbing=English';
+        }
+        const endpoint = `/movies/list/filter?${queryParams}&items_per_page=30&page=${page}`;
         const cacheRes = await catalogCache.get(endpoint);
         status = cacheRes.status;
         results = cacheRes.value.results || [];
