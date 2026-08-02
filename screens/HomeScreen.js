@@ -483,27 +483,32 @@ export default function HomeScreen({ navigation }) {
       let currentPage = targetPage;
       let accumulatedData = [];
       const targetCount = isLoadMore ? 10 : 20;
-      const maxPages = currentCategory === 'Anime' ? 30 : 20;
       let pagesScanned = 0;
-      // For language filters which have sparse results, limit to 3 pages per batch to keep loading fast
       const maxPagesPerBatch = (currentFilter === 'Hindi' || currentFilter === 'English') ? 3 : 6;
+      let resetCount = 0;
 
-      while (accumulatedData.length < targetCount && currentPage <= maxPages && pagesScanned < maxPagesPerBatch) {
+      while (accumulatedData.length < targetCount && pagesScanned < maxPagesPerBatch && resetCount < 5) {
         const rawData = await apiService.getTrendingMedia(currentPage, currentFilter, currentCategory);
         if (rawData.length === 0) {
-          setHasMore(false);
-          break;
+          currentPage = 0;
+          resetCount++;
+          continue;
         }
 
         const filteredData = applyClientSideFilter(rawData, currentFilter, currentCategory);
 
-        // Deduplicate with existing list and accumulated batch
         const existingIds = new Set(isLoadMore ? mediaListRef.current.map(item => item.id) : []);
-        const newUniqueItems = filteredData.filter(
-          item => !existingIds.has(item.id) && !accumulatedData.some(a => a.id === item.id)
-        );
+        const processedItems = filteredData.map(item => {
+          if (existingIds.has(item.id) || accumulatedData.some(a => a.id === item.id)) {
+            return {
+              ...item,
+              id: `${item.id}_dup_${Date.now()}_${Math.floor(Math.random() * 10000)}`
+            };
+          }
+          return item;
+        });
 
-        accumulatedData = [...accumulatedData, ...newUniqueItems];
+        accumulatedData = [...accumulatedData, ...processedItems];
 
         if (accumulatedData.length >= targetCount) {
           break;
