@@ -295,10 +295,12 @@ app.get('/api/trending', async (req, res) => {
       });
 
       // Fallback: If Trending list has no matches for the category, fall back to the explore lists
-      if (results.length === 0 && category !== 'All') {
+      if (results.length === 0) {
         let fallbackEndpoint = '';
         if (category === 'Anime') {
           fallbackEndpoint = `/movies/filter?sort_by=date&country=Japan&items_per_page=30&page=${page}`;
+        } else if (category === 'All') {
+          fallbackEndpoint = `/movies/filter?sort_by=date&items_per_page=30&page=${page}`;
         } else {
           let typeParam = category === 'Movies' ? '&type=1' : '&type=2';
           fallbackEndpoint = `/movies/filter?sort_by=date${typeParam}&items_per_page=30&page=${page}`;
