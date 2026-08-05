@@ -25,6 +25,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { apiService } from '../services/apiService';
 import { Ionicons } from '@expo/vector-icons';
 import { AdBanner728x90 } from '../components/AdBanner';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -424,7 +425,25 @@ export default function HomeScreen({ navigation }) {
 
   // ── Initial data load ────────────────────────────────────────────────────
   useEffect(() => {
-    loadTrendingData(0, false, 'Trending', 'All');
+    // 1. Load cached home data for instant start
+    const loadCachedData = async () => {
+      try {
+        const cached = await AsyncStorage.getItem('cached_home_data');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.length > 0) {
+            setMediaList(parsed);
+            setLoading(false);
+          }
+        }
+      } catch (e) {
+        console.warn('[Cache] Failed to load cached home data:', e);
+      }
+      // 2. Fetch fresh data in the background (Revalidate)
+      loadTrendingData(0, false, 'Trending', 'All');
+    };
+
+    loadCachedData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -563,7 +582,11 @@ export default function HomeScreen({ navigation }) {
       }
 
       if (targetPage === 0 && !isLoadMore) {
-        setMediaList(sortMediaList(makeUnique(accumulatedData, false), false, currentFilter));
+        const sortedData = sortMediaList(makeUnique(accumulatedData, false), false, currentFilter);
+        setMediaList(sortedData);
+        AsyncStorage.setItem('cached_home_data', JSON.stringify(sortedData)).catch(e => {
+          console.warn('[Cache] Failed to save home data:', e);
+        });
       } else {
         const sortedNewBatch = sortMediaList(accumulatedData, false, currentFilter);
         setMediaList(prev => makeUnique([...prev, ...sortedNewBatch], false));
@@ -677,7 +700,7 @@ export default function HomeScreen({ navigation }) {
       } catch (e) {
         setSuggestions([]);
       }
-    }, 250);
+    }, 120);
 
     return () => clearTimeout(delayDebounceFn);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1060,7 +1083,7 @@ export default function HomeScreen({ navigation }) {
           initialNumToRender={10}
           ListEmptyComponent={listEmpty}
           onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.3}
+          onEndReachedThreshold={1.2}
           ListFooterComponent={<ListFooter loadingMore={loadingMore} />}
           extraData={loadingMore}
         />
