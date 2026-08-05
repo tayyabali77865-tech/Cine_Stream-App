@@ -541,15 +541,15 @@ export default function HomeScreen({ navigation }) {
             newUniqueItems.push(item);
           }
 
-          accumulatedData = [...accumulatedData, ...newUniqueItems];
-          currentPage++;
-
-          const limitThreshold = currentCategory === 'Anime' ? 10 : 30;
-          if (pageData.length < limitThreshold) {
+          // Only stop if the backend returns absolutely 0 results
+          if (pageData.length === 0) {
             setHasMore(false);
             reachedEnd = true;
             break;
           }
+
+          accumulatedData = [...accumulatedData, ...newUniqueItems];
+          currentPage++;
         } catch (loopPageErr) {
           console.warn(`[LoadMore] Loop page fetch error for page ${currentPage}:`, loopPageErr.message);
           reachedEnd = true;

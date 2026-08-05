@@ -1024,7 +1024,10 @@ function parseWatchboxQualities(html) {
 async function extractDirectVideoLink(hostUrl) {
   try {
     console.log(`📡 Parsing hosting server: ${hostUrl}`);
-    const res = await axios.get(hostUrl, { headers: getHeaders() });
+    const res = await axios.get(hostUrl, { 
+      headers: getHeaders(),
+      timeout: 5000 
+    });
     const html = res.data;
     const $ = cheerio.load(html);
 
