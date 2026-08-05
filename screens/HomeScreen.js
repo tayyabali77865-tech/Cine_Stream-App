@@ -620,18 +620,12 @@ export default function HomeScreen({ navigation }) {
       // ✅ Discard results if the search query was cleared or changed in-flight
       const currentQuery = searchQueryRef.current.trim();
       if (currentQuery === '') {
-        Alert.alert("Debug Info", `Discarded: Query is empty.\ntrimmed: "${trimmed}"`);
         console.log(`[Search] Query was cleared in-flight. Discarding results.`);
         return;
       }
       if (currentQuery !== trimmed) {
-        Alert.alert("Debug Info", `Discarded: Query mismatch.\ncurrentQuery: "${currentQuery}"\ntrimmed: "${trimmed}"`);
         console.log(`[Search] Query changed to "${currentQuery}" in-flight. Discarding results for "${trimmed}".`);
         return;
-      }
-
-      if (allResults.length === 0) {
-        Alert.alert("Debug Info", `API returned 0 results for:\n"${trimmed}"`);
       }
 
       setSearchMediaList(sortMediaList(makeUnique(allResults, true), true, trimmed));

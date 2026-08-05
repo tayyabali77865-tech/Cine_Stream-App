@@ -49,8 +49,6 @@ async function ensureNetmirrorMirrors() {
   }
 }
 
-// Start fetching mirrors in the background immediately
-ensureNetmirrorMirrors().catch(() => {});
 
 // ─── URL Cooldown Tracker ─────────────────────────────────────────────────────
 
@@ -257,8 +255,7 @@ export const apiService = {
       cleaned = cleaned.replace(/\[.*?\]/g, ' ');
       cleaned = cleaned.replace(/\(.*?\)/g, ' ');
       cleaned = cleaned.replace(/\b(s\d+|season\s*\d+|part\s*\d+)\b/gi, ' ');
-      // Keep alphanumeric, spaces, hyphens, colons, and single quotes
-      cleaned = cleaned.replace(/[^a-z0-9\s\-\:\']/g, ' ');
+      cleaned = cleaned.replace(/[^a-z0-9\s]/g, ' ');
       cleaned = cleaned.replace(/\s+/g, ' ').trim();
 
       const queryToSearch = cleaned || decodedQuery.trim();
@@ -504,3 +501,6 @@ export const apiService = {
     }
   }
 };
+
+// Start fetching mirrors in the background immediately after all module variables are initialized
+ensureNetmirrorMirrors().catch(() => {});
