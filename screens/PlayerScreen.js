@@ -650,10 +650,10 @@ export default function PlayerScreen({ route, navigation }) {
             resizeMode={ResizeMode.CONTAIN}
             shouldPlay
             bufferConfig={{
-              maxBufferMs: 30000,
-              minBufferMs: 2500,
-              bufferForPlaybackMs: 1200,
-              bufferForPlaybackAfterRebufferMs: 2000
+              maxBufferMs: 15000,
+              minBufferMs: 1500,
+              bufferForPlaybackMs: 800,
+              bufferForPlaybackAfterRebufferMs: 1500
             }}
             onPlaybackStatusUpdate={(status) => {
               if (!isSeeking) setPlaybackStatus(status);
