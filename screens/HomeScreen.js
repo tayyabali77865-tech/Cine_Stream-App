@@ -932,6 +932,7 @@ export default function HomeScreen({ navigation }) {
                 onPress={() => {
                   isTypingRef.current = false;
                   setSearchQuery(item);
+                  searchQueryRef.current = item;
                   setSuggestions([]);
                   triggerSearch(item);
                 }}
