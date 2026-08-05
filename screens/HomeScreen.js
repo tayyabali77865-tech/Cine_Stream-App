@@ -655,8 +655,17 @@ export default function HomeScreen({ navigation }) {
       setSuggestions([]);
       if (isSearching) {
         setIsSearching(false);
+        isSearchingRef.current = false;
         setSearchLanguage('All');
         setShowSearchFilterMenu(false);
+        // Restore trending/home pagination properties
+        setHasMore(true);
+        hasMoreRef.current = true;
+        // Sync page number count with actual downloaded items
+        const currentDataLength = mediaListRef.current.length;
+        const restoredPage = Math.max(1, Math.ceil(currentDataLength / 10)); 
+        setPage(restoredPage);
+        pageRef.current = restoredPage;
       }
       return;
     }
