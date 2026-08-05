@@ -257,7 +257,8 @@ export const apiService = {
       cleaned = cleaned.replace(/\[.*?\]/g, ' ');
       cleaned = cleaned.replace(/\(.*?\)/g, ' ');
       cleaned = cleaned.replace(/\b(s\d+|season\s*\d+|part\s*\d+)\b/gi, ' ');
-      cleaned = cleaned.replace(/[^a-z0-9\s]/g, ' ');
+      // Keep alphanumeric, spaces, hyphens, colons, and single quotes
+      cleaned = cleaned.replace(/[^a-z0-9\s\-\:\']/g, ' ');
       cleaned = cleaned.replace(/\s+/g, ' ').trim();
 
       const queryToSearch = cleaned || decodedQuery.trim();

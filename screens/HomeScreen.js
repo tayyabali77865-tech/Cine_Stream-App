@@ -13,7 +13,8 @@ import {
   Animated,
   LayoutAnimation,
   UIManager,
-  Platform
+  Platform,
+  Alert
 } from 'react-native';
 
 if (Platform.OS === 'android') {
@@ -387,7 +388,6 @@ export default function HomeScreen({ navigation }) {
   hasMoreRef.current = hasMore;
   pageRef.current = page;
   isSearchingRef.current = isSearching;
-  searchQueryRef.current = searchQuery;
   activeFilterRef.current = activeFilter;
   activeCategoryRef.current = activeCategory;
 
@@ -620,12 +620,18 @@ export default function HomeScreen({ navigation }) {
       // ✅ Discard results if the search query was cleared or changed in-flight
       const currentQuery = searchQueryRef.current.trim();
       if (currentQuery === '') {
+        Alert.alert("Debug Info", `Discarded: Query is empty.\ntrimmed: "${trimmed}"`);
         console.log(`[Search] Query was cleared in-flight. Discarding results.`);
         return;
       }
       if (currentQuery !== trimmed) {
+        Alert.alert("Debug Info", `Discarded: Query mismatch.\ncurrentQuery: "${currentQuery}"\ntrimmed: "${trimmed}"`);
         console.log(`[Search] Query changed to "${currentQuery}" in-flight. Discarding results for "${trimmed}".`);
         return;
+      }
+
+      if (allResults.length === 0) {
+        Alert.alert("Debug Info", `API returned 0 results for:\n"${trimmed}"`);
       }
 
       setSearchMediaList(sortMediaList(makeUnique(allResults, true), true, trimmed));
@@ -642,6 +648,7 @@ export default function HomeScreen({ navigation }) {
   const handleSearch = useCallback((text) => {
     isTypingRef.current = true;
     setSearchQuery(text);
+    searchQueryRef.current = text;
   }, []);
 
   // Debounced search suggestions effect — only fetches suggestions, does not auto-search
@@ -775,6 +782,7 @@ export default function HomeScreen({ navigation }) {
     setActiveCategory(categoryName);
     setShowSidebar(false);
     setSearchQuery(''); // Reset search input query
+    searchQueryRef.current = '';
     setIsSearching(false); // Disable search mode
     setSearchLanguage('All');
     setShowSearchFilterMenu(false);
@@ -873,6 +881,7 @@ export default function HomeScreen({ navigation }) {
   const handleClearSearch = useCallback(() => {
     isTypingRef.current = false;
     setSearchQuery('');
+    searchQueryRef.current = '';
     setSearchLanguage('All');
     setShowSearchFilterMenu(false);
     setSuggestions([]);
