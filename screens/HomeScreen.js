@@ -478,73 +478,80 @@ export default function HomeScreen({ navigation }) {
       const startTime = Date.now();
       let currentPage = targetPage;
       let accumulatedData = [];
-      const targetCount = isLoadMore ? 10 : 10; // 10 initial cards = 1 page fetch = instant display
+      const targetCount = isLoadMore ? 10 : 10; 
       let reachedEnd = false;
 
-      // 1. Fetch the first page individually to save latency in 90% of requests
-      const rawData = await apiService.getTrendingMedia(currentPage, currentFilter, currentCategory);
-      if (rawData && rawData.length > 0) {
-        currentPage++;
-        const filteredData = applyClientSideFilter(rawData, currentFilter, currentCategory);
-        const existingIds = new Set(isLoadMore ? mediaListRef.current.map(item => item.id) : []);
-        const newUniqueItems = filteredData.filter(
-          item => !existingIds.has(item.id) && !accumulatedData.some(a => a.id === item.id)
-        );
-        accumulatedData = [...accumulatedData, ...newUniqueItems];
+      // 1. Fetch the first page individually to save latency
+      try {
+        const rawData = await apiService.getTrendingMedia(currentPage, currentFilter, currentCategory);
+        if (rawData && rawData.length > 0) {
+          currentPage++;
+          const filteredData = applyClientSideFilter(rawData, currentFilter, currentCategory);
+          const existingIds = new Set(isLoadMore ? mediaListRef.current.map(item => item.id) : []);
+          const newUniqueItems = filteredData.filter(
+            item => !existingIds.has(item.id) && !accumulatedData.some(a => a.id === item.id)
+          );
+          accumulatedData = [...accumulatedData, ...newUniqueItems];
 
-        if (accumulatedData.length >= targetCount) {
-          accumulatedData = accumulatedData.slice(0, targetCount);
+          if (accumulatedData.length >= targetCount) {
+            accumulatedData = accumulatedData.slice(0, targetCount);
+            reachedEnd = true;
+          }
+        } else {
+          setHasMore(false);
           reachedEnd = true;
         }
-      } else {
-        setHasMore(false);
-        reachedEnd = true;
+      } catch (firstPageErr) {
+        console.warn(`[LoadMore] First page fetch error for page ${currentPage}:`, firstPageErr.message);
+        if (!isLoadMore) {
+          throw firstPageErr; // Re-throw if it's the initial page load to show offline screen
+        }
+        reachedEnd = true; // Stop current batch if loading more failed, but keep scroll active
       }
 
-      // 1. Fetch pages sequentially until we get at least 10 unique elements
+      // 2. Fetch pages sequentially until we get at least 10 unique elements
       while (accumulatedData.length < targetCount && !reachedEnd) {
         console.log(`[LoadMore] Fetching page ${currentPage} sequentially for exact batch`);
-        const pageData = await apiService.getTrendingMedia(currentPage, currentFilter, currentCategory)
-          .catch(err => {
-            console.warn(`[LoadMore] Failed to fetch page ${currentPage}:`, err.message);
-            throw err;
-          });
-
-        if (!pageData || pageData.length === 0) {
-          setHasMore(false);
-          reachedEnd = true;
-          break;
-        }
-
-        const filteredData = applyClientSideFilter(pageData, currentFilter, currentCategory);
-        
-        // Dynamic mock checks replicating makeUnique on combined set
-        const existingIds = new Set(isLoadMore ? mediaListRef.current.map(item => String(item.id)) : []);
-        const existingTitles = new Set(isLoadMore ? mediaListRef.current.map(item => getCoreTitle(item.title)) : []);
-
-        const newUniqueItems = [];
-        for (const item of filteredData) {
-          if (!item || !item.id) continue;
-          const itemId = String(item.id);
-          const coreTitle = getCoreTitle(item.title);
-
-          if (existingIds.has(itemId) || newUniqueItems.some(a => String(a.id) === itemId)) {
-            continue;
-          }
-          if (item.title && (existingTitles.has(coreTitle) || newUniqueItems.some(a => getCoreTitle(a.title) === coreTitle))) {
-            continue; // Skip duplicate titles (e.g. Hindi dub if English already loaded)
+        try {
+          const pageData = await apiService.getTrendingMedia(currentPage, currentFilter, currentCategory);
+          if (!pageData || pageData.length === 0) {
+            setHasMore(false);
+            reachedEnd = true;
+            break;
           }
 
-          newUniqueItems.push(item);
-        }
+          const filteredData = applyClientSideFilter(pageData, currentFilter, currentCategory);
+          
+          const existingIds = new Set(isLoadMore ? mediaListRef.current.map(item => String(item.id)) : []);
+          const existingTitles = new Set(isLoadMore ? mediaListRef.current.map(item => getCoreTitle(item.title)) : []);
 
-        accumulatedData = [...accumulatedData, ...newUniqueItems];
-        currentPage++;
+          const newUniqueItems = [];
+          for (const item of filteredData) {
+            if (!item || !item.id) continue;
+            const itemId = String(item.id);
+            const coreTitle = getCoreTitle(item.title);
 
-        // If page has less than 30 items (or 10 items for Anime), it means netmirror backend doesn't have more pages
-        const limitThreshold = currentCategory === 'Anime' ? 10 : 30;
-        if (pageData.length < limitThreshold) {
-          setHasMore(false);
+            if (existingIds.has(itemId) || newUniqueItems.some(a => String(a.id) === itemId)) {
+              continue;
+            }
+            if (item.title && (existingTitles.has(coreTitle) || newUniqueItems.some(a => getCoreTitle(a.title) === coreTitle))) {
+              continue; 
+            }
+
+            newUniqueItems.push(item);
+          }
+
+          accumulatedData = [...accumulatedData, ...newUniqueItems];
+          currentPage++;
+
+          const limitThreshold = currentCategory === 'Anime' ? 10 : 30;
+          if (pageData.length < limitThreshold) {
+            setHasMore(false);
+            reachedEnd = true;
+            break;
+          }
+        } catch (loopPageErr) {
+          console.warn(`[LoadMore] Loop page fetch error for page ${currentPage}:`, loopPageErr.message);
           reachedEnd = true;
           break;
         }
@@ -561,7 +568,6 @@ export default function HomeScreen({ navigation }) {
       }
 
       const elapsed = Date.now() - startTime;
-      // Add minimum delay of 800ms during loading more so spinner is clearly visible
       if (isLoadMore && elapsed < 800) {
         await new Promise(resolve => setTimeout(resolve, 800 - elapsed));
       }
@@ -572,7 +578,7 @@ export default function HomeScreen({ navigation }) {
 
       if (targetPage === 0 && !isLoadMore) {
         setMediaList(sortMediaList(accumulatedData, false, currentFilter));
-      } else {
+      } else if (accumulatedData.length > 0) {
         const sortedNewBatch = sortMediaList(accumulatedData, false, currentFilter);
         setMediaList(prev => [...prev, ...sortedNewBatch]);
       }
