@@ -171,7 +171,10 @@ export default function PlayerScreen({ route, navigation }) {
 
   React.useEffect(() => {
     setAdUrl("https://omg10.com/4/11503019");
-    setAdVisible(true);
+    const timer = setTimeout(() => {
+      setAdVisible(true);
+    }, 2000);
+    return () => clearTimeout(timer);
   }, []);
 
   // ── Refs (no re-render needed) ────────────────────────────────────────────
