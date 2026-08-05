@@ -238,7 +238,8 @@ async function fetchFromNetmirrorWithRetry(endpoint) {
         throw new Error('Invalid or empty response structure from NetMirror.');
       } catch (err) {
         if (err.response && err.response.status === 404) {
-          console.log(`[Fetcher] NetMirror returned 404 for ${url}. Treating as empty results.`);
+          console.log(`[Fetcher] NetMirror returned 404 for ${url}. Treating as empty results and keeping circuit breaker closed.`);
+          circuitBreaker.success(); // Treat 404 as a successful transaction (not a block)
           return { results: [] };
         }
         lastError = err;
@@ -267,7 +268,7 @@ app.get('/api/trending', async (req, res) => {
     let results = [];
     let status = 'MISS';
 
-    if (filter === 'Trending') {
+    if (filter === 'Trending' && category !== 'Anime') {
       const endpoint = `/tranding?id=25&page=${page}`;
       const cacheRes = await catalogCache.get(endpoint);
       status = cacheRes.status;
