@@ -23,7 +23,7 @@ if (Platform.OS === 'android') {
   }
 }
 import { Image as ExpoImage } from 'expo-image';
-import { apiService } from '../services/apiService';
+import { apiService, getCachedImageUri } from '../services/apiService';
 import { Ionicons } from '@expo/vector-icons';
 import { AdBanner728x90 } from '../components/AdBanner';
 
@@ -320,9 +320,10 @@ const MediaCard = memo(({ posterUri, title, type, onPress }) => (
         source={{ uri: posterUri }}
         style={styles.poster}
         contentFit="cover"
-        transition={0}
-        priority="normal"
+        transition={150}
+        priority="high"
         cachePolicy="memory-disk"
+        recyclingKey={posterUri}
       />
       <View style={styles.badgeContainer}>
         <Text style={styles.badgeText}>{type}</Text>
@@ -500,52 +501,58 @@ export default function HomeScreen({ navigation }) {
         reachedEnd = true;
       }
 
-      // 2. Fetch subsequent pages in parallel ONLY if the first page did not fulfill the targetCount
+      // 1. Fetch pages sequentially until we get at least 10 unique elements
       while (accumulatedData.length < targetCount && !reachedEnd) {
-        const pageBatch = [currentPage, currentPage + 1, currentPage + 2];
-        console.log(`[LoadMore] Fetching subsequent pages ${pageBatch.join(', ')} in parallel`);
+        console.log(`[LoadMore] Fetching page ${currentPage} sequentially for exact batch`);
+        const pageData = await apiService.getTrendingMedia(currentPage, currentFilter, currentCategory)
+          .catch(err => {
+            console.warn(`[LoadMore] Failed to fetch page ${currentPage}:`, err.message);
+            throw err;
+          });
 
-        const fetchPromises = pageBatch.map(pageIndex =>
-          apiService.getTrendingMedia(pageIndex, currentFilter, currentCategory)
-            .catch(err => {
-              console.warn(`[LoadMore] Failed to fetch page ${pageIndex}:`, err.message);
-              throw err;
-            })
-        );
-
-        const resultsBatch = await Promise.all(fetchPromises);
-
-        // Process results sequentially to maintain source order
-        for (let i = 0; i < pageBatch.length; i++) {
-          const pageData = resultsBatch[i];
-          const pageIndex = pageBatch[i];
-
-          if (!pageData || pageData.length === 0) {
-            setHasMore(false);
-            reachedEnd = true;
-            break;
-          }
-
-          currentPage = pageIndex + 1;
-
-          const filteredData = applyClientSideFilter(pageData, currentFilter, currentCategory);
-
-          const existingIds = new Set(isLoadMore ? mediaListRef.current.map(item => item.id) : []);
-          const newUniqueItems = filteredData.filter(
-            item => !existingIds.has(item.id) && !accumulatedData.some(a => a.id === item.id)
-          );
-
-          accumulatedData = [...accumulatedData, ...newUniqueItems];
-
-          if (accumulatedData.length >= targetCount) {
-            accumulatedData = accumulatedData.slice(0, targetCount);
-            break;
-          }
-        }
-
-        if (accumulatedData.length >= targetCount) {
+        if (!pageData || pageData.length === 0) {
+          setHasMore(false);
+          reachedEnd = true;
           break;
         }
+
+        const filteredData = applyClientSideFilter(pageData, currentFilter, currentCategory);
+        
+        // Dynamic mock checks replicating makeUnique on combined set
+        const existingIds = new Set(isLoadMore ? mediaListRef.current.map(item => String(item.id)) : []);
+        const existingTitles = new Set(isLoadMore ? mediaListRef.current.map(item => getCoreTitle(item.title)) : []);
+
+        const newUniqueItems = [];
+        for (const item of filteredData) {
+          if (!item || !item.id) continue;
+          const itemId = String(item.id);
+          const coreTitle = getCoreTitle(item.title);
+
+          if (existingIds.has(itemId) || newUniqueItems.some(a => String(a.id) === itemId)) {
+            continue;
+          }
+          if (item.title && (existingTitles.has(coreTitle) || newUniqueItems.some(a => getCoreTitle(a.title) === coreTitle))) {
+            continue; // Skip duplicate titles (e.g. Hindi dub if English already loaded)
+          }
+
+          newUniqueItems.push(item);
+        }
+
+        accumulatedData = [...accumulatedData, ...newUniqueItems];
+        currentPage++;
+
+        // If page has less than 30 items (or 10 items for Anime), it means netmirror backend doesn't have more pages
+        const limitThreshold = currentCategory === 'Anime' ? 10 : 30;
+        if (pageData.length < limitThreshold) {
+          setHasMore(false);
+          reachedEnd = true;
+          break;
+        }
+      }
+
+      // Enforce target count of 10 items
+      if (accumulatedData.length >= targetCount) {
+        accumulatedData = accumulatedData.slice(0, targetCount);
       }
 
       // Enforce even length at the end in case we broke early
@@ -554,8 +561,9 @@ export default function HomeScreen({ navigation }) {
       }
 
       const elapsed = Date.now() - startTime;
-      if (isLoadMore && elapsed < 600) {
-        await new Promise(resolve => setTimeout(resolve, 600 - elapsed));
+      // Add minimum delay of 800ms during loading more so spinner is clearly visible
+      if (isLoadMore && elapsed < 800) {
+        await new Promise(resolve => setTimeout(resolve, 800 - elapsed));
       }
 
       if (accumulatedData.length === 0 && targetPage === 0) {
@@ -563,10 +571,10 @@ export default function HomeScreen({ navigation }) {
       }
 
       if (targetPage === 0 && !isLoadMore) {
-        setMediaList(sortMediaList(makeUnique(accumulatedData, false), false, currentFilter));
+        setMediaList(sortMediaList(accumulatedData, false, currentFilter));
       } else {
         const sortedNewBatch = sortMediaList(accumulatedData, false, currentFilter);
-        setMediaList(prev => makeUnique([...prev, ...sortedNewBatch], false));
+        setMediaList(prev => [...prev, ...sortedNewBatch]);
       }
       setPage(currentPage);
     } catch (e) {
@@ -835,7 +843,7 @@ export default function HomeScreen({ navigation }) {
     const badgeType = getDisplayBadge(item, activeCategory);
     return (
       <MediaCard
-        posterUri={item.poster}
+        posterUri={getCachedImageUri(item.poster)}
         title={item.title}
         type={badgeType}
         onPress={pressHandlersRef.current[item.id]}
@@ -888,10 +896,24 @@ export default function HomeScreen({ navigation }) {
     setSearchLanguage('All');
     setShowSearchFilterMenu(false);
     setSuggestions([]);
+    
+    if (isSearching) {
+      setIsSearching(false);
+      isSearchingRef.current = false;
+      // Restore trending/home pagination properties
+      setHasMore(true);
+      hasMoreRef.current = true;
+      // Sync page number count with actual downloaded items
+      const currentDataLength = mediaListRef.current.length;
+      const restoredPage = Math.max(1, Math.ceil(currentDataLength / 10)); 
+      setPage(restoredPage);
+      pageRef.current = restoredPage;
+    }
+
     if (searchInputRef.current) {
       searchInputRef.current.focus();
     }
-  }, []);
+  }, [isSearching]);
 
   const handleToggleFilterMenu = useCallback(
     () => {

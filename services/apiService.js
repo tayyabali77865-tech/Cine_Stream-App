@@ -15,6 +15,29 @@ const normalizeBaseUrl = (value) => {
   return value.replace(/\/+$/, '');
 };
 
+// ─── Image CDN Caching Proxy ──────────────────────────────────────────────────
+export const getCachedImageUri = (url) => {
+  if (!url || typeof url !== 'string') return 'https://placehold.co/300x450';
+  if (url.startsWith('https://images.weserv.nl/')) return url;
+  
+  // Exclude placeholder images from proxying
+  if (url.includes('placehold.co') || url.includes('placeholder')) return url;
+
+  // Clean URL format
+  let targetUrl = url;
+  if (url.startsWith('//')) {
+    targetUrl = 'https:' + url;
+  }
+
+  // Adjust TMDB sizes dynamically to w300 to reduce bandwidth
+  if (targetUrl.includes('image.tmdb.org/t/p/')) {
+    targetUrl = targetUrl.replace(/\/t\/p\/[a-zA-Z0-9_-]+\//, '/t/p/w300/');
+  }
+
+  // Wrap inside weserv caching layers proxy (resizes to 300px width, q=80 compression)
+  return `https://images.weserv.nl/?url=${encodeURIComponent(targetUrl)}&w=300&q=82`;
+};
+
 const API_FALLBACKS = [
   deployedApiBaseUrl ? `${normalizeBaseUrl(deployedApiBaseUrl)}/api` : null,
   'https://cinestream-app-production-68d6.up.railway.app/api',

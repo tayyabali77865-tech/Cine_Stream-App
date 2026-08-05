@@ -221,7 +221,7 @@ async function fetchFromNetmirrorWithRetry(endpoint) {
         console.log(`[Fetcher] Sending request to NetMirror: ${url} (Attempt ${attempt}/${maxRetries})`);
         const res = await axios.get(url, {
           headers: { 'Content-Type': 'application/json', ...getHeaders() },
-          timeout: 2500
+          timeout: 6000
         });
 
         // Validate response is a parsed JSON object (not HTML block page or string)
@@ -308,7 +308,7 @@ app.get('/api/trending', async (req, res) => {
           } else if (filter === 'English') {
             queryParams += '&dubbing=English';
           }
-          fallbackEndpoint = `/movies/list/filter?${queryParams}&items_per_page=30&page=${page}`;
+          fallbackEndpoint = `/movies/filter?${queryParams}&items_per_page=30&page=${page}`;
         } else if (category === 'All') {
           fallbackEndpoint = `/movies/filter?sort_by=date&items_per_page=30&page=${page}`;
         } else {
@@ -328,7 +328,7 @@ app.get('/api/trending', async (req, res) => {
         } else if (filter === 'English') {
           queryParams += '&dubbing=English';
         }
-        const endpoint = `/movies/list/filter?${queryParams}&items_per_page=30&page=${page}`;
+        const endpoint = `/movies/filter?${queryParams}&items_per_page=30&page=${page}`;
         const cacheRes = await catalogCache.get(endpoint);
         status = cacheRes.status;
         results = cacheRes.value.results || [];
