@@ -361,6 +361,7 @@ export default function HomeScreen({ navigation }) {
   const [activeCategory, setActiveCategory] = useState('All');
   const [showSidebar, setShowSidebar] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
   // ── Animated values as refs — no state slot used, no extra re-render ──
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
   const slideAnim = useRef(new Animated.Value(250)).current;
@@ -632,9 +633,10 @@ export default function HomeScreen({ navigation }) {
     setSearchQuery(text);
   }, []);
 
-  // Debounced search effect — fixed dependency array
+  // Debounced search suggestions effect — only fetches suggestions, does not auto-search
   useEffect(() => {
     if (searchQuery.trim() === '') {
+      setSuggestions([]);
       if (isSearching) {
         setIsSearching(false);
         setSearchLanguage('All');
@@ -644,12 +646,26 @@ export default function HomeScreen({ navigation }) {
       return;
     }
 
-    const delayDebounceFn = setTimeout(() => {
-      triggerSearch(searchQuery);
-    }, 150);
+    const delayDebounceFn = setTimeout(async () => {
+      try {
+        const trimmed = searchQuery.trim();
+        if (trimmed.length >= 2) {
+          const data = await apiService.searchMedia(trimmed, 0);
+          if (data && data.length > 0) {
+            const titles = Array.from(new Set(data.map(item => item.title))).slice(0, 6);
+            setSuggestions(titles);
+          } else {
+            setSuggestions([]);
+          }
+        } else {
+          setSuggestions([]);
+        }
+      } catch (e) {
+        setSuggestions([]);
+      }
+    }, 250);
 
     return () => clearTimeout(delayDebounceFn);
-    // isSearching intentionally omitted — we only want to react to searchQuery changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
 
@@ -838,6 +854,7 @@ export default function HomeScreen({ navigation }) {
     handleSearch('');
     setSearchLanguage('All');
     setShowSearchFilterMenu(false);
+    setSuggestions([]);
   }, [handleSearch]);
 
   const handleToggleFilterMenu = useCallback(
@@ -862,13 +879,17 @@ export default function HomeScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Search Input Bar with Cross Clear Icon */}
+      {/* Search Input Bar with Cross Clear Icon and Search Button */}
       <View style={styles.searchContainer}>
         <TextInput
           placeholder="Search Movie, Series or Anime"
           placeholderTextColor="#9CA3AF"
           value={searchQuery}
           onChangeText={handleSearch}
+          onSubmitEditing={() => {
+            setSuggestions([]);
+            triggerSearch(searchQuery);
+          }}
           style={styles.searchInput}
         />
         {searchQuery.length > 0 && (
@@ -879,6 +900,39 @@ export default function HomeScreen({ navigation }) {
           >
             <Text style={styles.clearSearchText}>✕</Text>
           </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={styles.searchBtn}
+          onPress={() => {
+            setSuggestions([]);
+            triggerSearch(searchQuery);
+          }}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="search" size={18} color="#FFF" />
+        </TouchableOpacity>
+
+        {/* Suggestions Dropdown Overlay */}
+        {suggestions.length > 0 && (
+          <View style={styles.suggestionsContainer}>
+            {suggestions.map((item, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.suggestionRow}
+                activeOpacity={0.8}
+                onPress={() => {
+                  setSearchQuery(item);
+                  setSuggestions([]);
+                  triggerSearch(item);
+                }}
+              >
+                <Ionicons name="search-outline" size={15} color="#9CA3AF" style={{ marginRight: 10 }} />
+                <Text style={styles.suggestionText} numberOfLines={1}>
+                  {item}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         )}
       </View>
 
@@ -1063,13 +1117,13 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.08)',
     borderRadius: 12,
     paddingLeft: 16,
-    paddingRight: 42,
+    paddingRight: 90,
     color: '#F3F4F6',
     fontSize: 14,
   },
   clearSearchBtn: {
     position: 'absolute',
-    right: 28,
+    right: 68,
     width: 24,
     height: 24,
     borderRadius: 12,
@@ -1081,6 +1135,46 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 11,
     fontWeight: 'bold',
+  },
+  searchBtn: {
+    position: 'absolute',
+    right: 24,
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#E50914',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggestionsContainer: {
+    position: 'absolute',
+    top: 62,
+    left: 16,
+    right: 16,
+    backgroundColor: '#15151A',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#374151',
+    zIndex: 999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 5,
+    overflow: 'hidden',
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#262630',
+  },
+  suggestionText: {
+    color: '#F3F4F6',
+    fontSize: 14,
+    flex: 1,
   },
   headerRow: {
     flexDirection: 'row',
