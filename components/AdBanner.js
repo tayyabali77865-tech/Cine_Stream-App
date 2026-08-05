@@ -416,8 +416,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   popupCard: {
-    width: SCREEN_WIDTH * 0.85,
-    height: SCREEN_HEIGHT * 0.6,
+    width: SCREEN_WIDTH * 0.9,
+    height: SCREEN_HEIGHT * 0.7,
     backgroundColor: '#1C1C24',
     borderRadius: 16,
     overflow: 'hidden',
