@@ -430,18 +430,16 @@ app.get('/api/trending', async (req, res) => {
 });
 
 /**
- * 2. Search Media — cached with searchCache (2 min TTL, 5 min SWR)
+ * 2. Search Media — queries all available mirrors in parallel for comprehensive results
  */
 app.get('/api/search', async (req, res) => {
   const query = req.query.q;
-  const page = req.query.page || 0;
+  const page = parseInt(req.query.page || 0);
   if (!query) return res.json([]);
 
   try {
-    // 1. Decode incoming query to strip double-encoding (e.g. %2520 -> %20)
+    // Decode and clean query
     const decodedQuery = decodeURIComponent(query);
-
-    // Clean query to prevent Netmirror search failure (strip colons, brackets, season tags)
     let cleaned = decodedQuery.toLowerCase();
     cleaned = cleaned.replace(/\[.*?\]/g, ' ');
     cleaned = cleaned.replace(/\(.*?\)/g, ' ');
@@ -450,22 +448,52 @@ app.get('/api/search', async (req, res) => {
     cleaned = cleaned.replace(/\s+/g, ' ').trim();
 
     const queryToSearch = cleaned || decodedQuery.trim();
-
-    // 2. Format spaces as '+' which is the standard parser notation for NetMirror search endpoints
     const formattedQuery = encodeURIComponent(queryToSearch).replace(/%20/g, '+');
-    const endpoint = `/search2/${formattedQuery}?page=${page}`;
 
-    // ✅ Use searchCache safely by retrieving wrapper value property explicitly
-    const cacheRes = await searchCache.get(endpoint);
-    const data = cacheRes ? cacheRes.value : null;
-    const status = cacheRes ? cacheRes.status : 'MISS';
-    const results = (data && data.results) ? data.results : [];
+    const allMirrors = mirrorManager.getMirrors();
 
-    // Batch check deleted status for search results
-    const itemIds = results.map(item => String(item.id));
+    // Query all available mirrors in parallel — same strategy as client used to do
+    const mirrorPromises = allMirrors.map(async (mirror) => {
+      const url = `${mirror}/search2/${formattedQuery}?page=${page}`;
+      try {
+        const res = await axios.get(url, {
+          headers: getHeaders(),
+          timeout: 6000
+        });
+        const data = res.data;
+        if (!data || typeof data !== 'object') return [];
+        if (data.message && data.message.includes('Access denied')) return [];
+        return data.results || [];
+      } catch (err) {
+        console.warn(`[Search] Mirror ${mirror} failed: ${err.message}`);
+        return [];
+      }
+    });
+
+    const allResultsArray = await Promise.all(mirrorPromises);
+
+    // Merge and deduplicate by ID
+    const mergedResults = [];
+    const seenIds = new Set();
+    for (const results of allResultsArray) {
+      for (const item of results) {
+        if (!seenIds.has(item.id)) {
+          seenIds.add(item.id);
+          mergedResults.push(item);
+        }
+      }
+    }
+
+    if (mergedResults.length === 0) {
+      console.warn(`[Search] All mirrors returned 0 results for "${queryToSearch}" page ${page}`);
+      return res.json([]);
+    }
+
+    // Batch check deleted IDs
+    const itemIds = mergedResults.map(item => String(item.id));
     const deletedIdsSet = await db.batchGetDeleted(itemIds);
 
-    const mediaList = results
+    const mediaList = mergedResults
       .filter(item => !deletedIdsSet.has(String(item.id)))
       .map(item => ({
         id: item.id,
@@ -478,7 +506,7 @@ app.get('/api/search', async (req, res) => {
         rating: parseFloat(item.vote_average) || 0
       }));
 
-    res.setHeader('X-Cache-Status', status);
+    console.log(`[Search] "${queryToSearch}" page ${page} → ${mediaList.length} results from ${allMirrors.length} mirrors`);
     res.json(mediaList);
   } catch (error) {
     console.error('Error searching:', error.message);
