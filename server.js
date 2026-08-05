@@ -712,82 +712,86 @@ app.all('/api/stream/:id', async (req, res) => {
 
 
     if (!resolvedVideoUrl) {
-      console.log(`⚠️ Failed to resolve stream for primary ID ${targetId}. Trying auto-recovery fallback...`);
+      console.log(`⚠️ Failed to resolve stream for primary ID ${targetId}. Trying auto-recovery fallback in parallel...`);
       const baseTitle = item.title.replace(/\[.*?\]/g, '').trim();
       const searchUrl = `/search2/${encodeURIComponent(baseTitle)}?page=0`;
       const searchRes = await fetchFromNetmirrorWithRetry(searchUrl).catch(() => null);
 
       if (searchRes && searchRes.results) {
-        const alternateItems = searchRes.results.filter(resItem => String(resItem.id) !== String(targetId));
+        const alternateItems = searchRes.results.filter(resItem => String(resItem.id) !== String(targetId)).slice(0, 3); // Limit to top 3 alternatives
 
-        for (const altItem of alternateItems) {
-          console.log(`🔄 Attempting recovery with alternate ID: ${altItem.id} ("${altItem.title}")`);
+        const recoveryPromises = alternateItems.map(async (altItem) => {
           try {
             const altDetailsRes = await fetchFromNetmirrorWithRetry(`/movie/${altItem.id}`);
             const altResults = altDetailsRes.results || [];
             if (altResults.length > 0) {
               const altItemMeta = altResults[0];
 
+              let altVideoUrl = null;
+              let altQualities = [];
+
+              // Check Scenario 1 (direct embed)
               if (altItemMeta.embed) {
                 const rawEmbedUrl = altItemMeta.embed;
                 const urlParamMatch = rawEmbedUrl.match(/url=([^&]+)/);
                 const sParamMatch = rawEmbedUrl.match(/[?&]s=([^&]+)/);
                 if (urlParamMatch) {
                   const decodedUrl = Buffer.from(urlParamMatch[1], 'base64').toString('ascii');
-                  resolvedVideoUrl = await extractDirectVideoLink(decodedUrl);
-                  if (resolvedVideoUrl) {
+                  altVideoUrl = await extractDirectVideoLink(decodedUrl);
+                  if (altVideoUrl) {
                     let sizeLabel = 'N/A';
                     if (sParamMatch) {
                       try { sizeLabel = Buffer.from(sParamMatch[1], 'base64').toString('ascii').trim(); } catch (_) { }
                     }
-                    const qualityMatch = (rawEmbedUrl + resolvedVideoUrl + (altItemMeta.title || '')).match(/(\d{3,4}p)/i);
-                    resolvedQualities = [{
+                    const qualityMatch = (rawEmbedUrl + altVideoUrl + (altItemMeta.title || '')).match(/(\d{3,4}p)/i);
+                    altQualities = [{
                       quality: qualityMatch ? qualityMatch[1].toUpperCase() : 'HD',
                       size: sizeLabel,
-                      url: resolvedVideoUrl
+                      url: altVideoUrl
                     }];
                   }
                 }
               }
 
-              if (!resolvedVideoUrl && altItemMeta.dp) {
+              // Check Scenario 2 (watchbox)
+              if (!altVideoUrl && altItemMeta.dp) {
                 const altNa = Buffer.from(altItemMeta.title ? altItemMeta.title.trim() : 'Video').toString('base64');
                 const watchboxResult = await resolveWatchboxStream(altItem.id, targetSe, targetEp, altItemMeta.dp, altNa, clientIp);
                 if (watchboxResult) {
-                  resolvedVideoUrl = watchboxResult.videoUrl;
-                  resolvedQualities = watchboxResult.qualities || [];
+                  altVideoUrl = watchboxResult.videoUrl;
+                  altQualities = watchboxResult.qualities || [];
                 }
               }
 
-              if (!resolvedVideoUrl && altItemMeta.embed_json && Array.isArray(altItemMeta.embed_json) && altItemMeta.embed_json.length > 0) {
+              // Check Scenario 3 (embed_json)
+              if (!altVideoUrl && altItemMeta.embed_json && Array.isArray(altItemMeta.embed_json) && altItemMeta.embed_json.length > 0) {
                 const altEmbedItem = altItemMeta.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
                 if (altEmbedItem) {
                   const embedJsonResult = await resolveEmbedJsonStream(altEmbedItem, clientIp);
                   if (embedJsonResult) {
-                    resolvedVideoUrl = embedJsonResult.videoUrl;
-                    resolvedQualities = embedJsonResult.qualities || [];
-                    if (resolvedQualities.length === 0 && resolvedVideoUrl) {
-                      const qualityMatch = (altEmbedItem.name + resolvedVideoUrl).match(/(\d{3,4}p)/i);
-                      resolvedQualities = [{
-                        quality: qualityMatch ? qualityMatch[1].toUpperCase() : 'HD',
-                        size: altEmbedItem.size || 'N/A',
-                        url: resolvedVideoUrl
-                      }];
-                    }
+                    altVideoUrl = embedJsonResult.videoUrl;
+                    altQualities = embedJsonResult.qualities || [];
                   }
                 }
               }
 
-
-
-              if (resolvedVideoUrl) {
-                console.log(`🔥 Recovery SUCCESS! Using stream from alternate ID ${altItem.id}`);
-                break;
+              if (altVideoUrl) {
+                return { videoUrl: altVideoUrl, qualities: altQualities, id: altItem.id };
               }
             }
-          } catch (altErr) {
-            console.log(`⚠️ Alternate ID ${altItem.id} recovery failed: ${altErr.message}`);
+            throw new Error('No stream resolved on this alternative.');
+          } catch (e) {
+            throw e;
           }
+        });
+
+        try {
+          const fastRecovery = await Promise.any(recoveryPromises);
+          resolvedVideoUrl = fastRecovery.videoUrl;
+          resolvedQualities = fastRecovery.qualities;
+          console.log(`🔥 Parallel Recovery SUCCESS! Using stream from alternate ID ${fastRecovery.id}`);
+        } catch (recoveryErr) {
+          console.log('⚠️ All alternate recovery attempts failed.');
         }
       }
     }
