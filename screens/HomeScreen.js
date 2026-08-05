@@ -363,6 +363,8 @@ export default function HomeScreen({ navigation }) {
   const [isOffline, setIsOffline] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const isTypingRef = useRef(false);
+  const [searchMediaList, setSearchMediaList] = useState([]);
+  const searchMediaListRef = useRef(searchMediaList);
   // ── Animated values as refs — no state slot used, no extra re-render ──
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
   const slideAnim = useRef(new Animated.Value(250)).current;
@@ -380,6 +382,7 @@ export default function HomeScreen({ navigation }) {
   const activeCategoryRef = useRef(activeCategory);
 
   mediaListRef.current = mediaList;
+  searchMediaListRef.current = searchMediaList;
   hasMoreRef.current = hasMore;
   pageRef.current = page;
   isSearchingRef.current = isSearching;
@@ -576,7 +579,6 @@ export default function HomeScreen({ navigation }) {
     const trimmed = text.trim();
     if (trimmed === '') {
       setIsSearching(false);
-      loadTrendingData(0, false, activeFilter, activeCategory);
       return;
     }
     try {
@@ -619,7 +621,7 @@ export default function HomeScreen({ navigation }) {
         return;
       }
 
-      setMediaList(sortMediaList(makeUnique(allResults, true), true, trimmed));
+      setSearchMediaList(sortMediaList(makeUnique(allResults, true), true, trimmed));
       setPage(0);
     } catch (e) {
       console.error('[Search] Error:', e);
@@ -647,7 +649,6 @@ export default function HomeScreen({ navigation }) {
         setIsSearching(false);
         setSearchLanguage('All');
         setShowSearchFilterMenu(false);
-        loadTrendingData(0, false, activeFilter, activeCategory);
       }
       return;
     }
@@ -696,7 +697,7 @@ export default function HomeScreen({ navigation }) {
         }
 
         // Deduplicate with existing list and accumulated batch
-        const existingIds = new Set(mediaListRef.current.map(item => item.id));
+        const existingIds = new Set(searchMediaListRef.current.map(item => item.id));
         const newUniqueItems = data.filter(
           item => !existingIds.has(item.id) && !accumulatedData.some(a => a.id === item.id)
         );
@@ -711,7 +712,7 @@ export default function HomeScreen({ navigation }) {
       }
 
       if (accumulatedData.length > 0) {
-        setMediaList(prev => sortMediaList(makeUnique([...prev, ...accumulatedData], true), true, query));
+        setSearchMediaList(prev => sortMediaList(makeUnique([...prev, ...accumulatedData], true), true, query));
         setPage(currentPage);
       } else {
         setHasMore(false);
@@ -770,9 +771,9 @@ export default function HomeScreen({ navigation }) {
   // Memoized search filtered list
   const filteredSearchList = useMemo(() => {
     if (!isSearching) return [];
-    console.log(`[SearchFilter] Filtering ${mediaList.length} items with lang: "${searchLanguage}"`);
-    if (searchLanguage === 'All') return mediaList;
-    const filtered = mediaList.filter(item => {
+    console.log(`[SearchFilter] Filtering ${searchMediaList.length} items with lang: "${searchLanguage}"`);
+    if (searchLanguage === 'All') return searchMediaList;
+    const filtered = searchMediaList.filter(item => {
       const detected = detectLanguage(item.title);
       if (searchLanguage === 'Original') {
         return detected === 'Original';
@@ -781,18 +782,18 @@ export default function HomeScreen({ navigation }) {
     });
     console.log(`[SearchFilter] Filtered result count: ${filtered.length}`);
     return filtered;
-  }, [mediaList, isSearching, searchLanguage]);
+  }, [searchMediaList, isSearching, searchLanguage]);
 
   // Dynamically calculate the languages present in search results
   const dynamicSearchLanguages = useMemo(() => {
-    if (!isSearching || mediaList.length === 0) return ['All'];
+    if (!isSearching || searchMediaList.length === 0) return ['All'];
     const foundLanguages = new Set();
-    mediaList.forEach(item => {
+    searchMediaList.forEach(item => {
       const lang = detectLanguage(item.title);
       if (lang) foundLanguages.add(lang);
     });
     return ['All', ...Array.from(foundLanguages).sort()];
-  }, [mediaList, isSearching]);
+  }, [searchMediaList, isSearching]);
 
   // ─── Render Helpers ───────────────────────────────────────────────────────
 
