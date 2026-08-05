@@ -648,59 +648,81 @@ app.all('/api/stream/:id', async (req, res) => {
       console.log(`🎬 Target item is classified as Movie/Single release or has no valid seasons. Clearing season/episode parameters.`);
     }
 
-    // Try Scenario 1 (direct embed resolver)
+    // ─── Parallel Resolution: Run all scenarios concurrently ─────────────────
+    const resolveTasks = [];
+
+    // Scenario 1: Direct Embed
     if (item.embed) {
-      const rawEmbedUrl = item.embed;
-      const urlParamMatch = rawEmbedUrl.match(/url=([^&]+)/);
-      const sParamMatch = rawEmbedUrl.match(/[?&]s=([^&]+)/);
-      if (urlParamMatch) {
-        const decodedUrl = Buffer.from(urlParamMatch[1], 'base64').toString('ascii');
-        console.log(`🔓 Decoded Embed Host URL: ${decodedUrl}`);
-        resolvedVideoUrl = await extractDirectVideoLink(decodedUrl);
-        if (resolvedVideoUrl) {
-          let sizeLabel = 'N/A';
-          if (sParamMatch) {
-            try { sizeLabel = Buffer.from(sParamMatch[1], 'base64').toString('ascii').trim(); } catch (_) { }
-          }
-          const qualityMatch = (rawEmbedUrl + resolvedVideoUrl + (item.title || '')).match(/(\d{3,4}p)/i);
-          resolvedQualities = [{
-            quality: qualityMatch ? qualityMatch[1].toUpperCase() : 'HD',
-            size: sizeLabel,
-            url: resolvedVideoUrl
-          }];
-        }
-      }
-    }
-
-    // Try Scenario 2 (Watchbox resolver with signatures)
-    if (!resolvedVideoUrl && item.dp) {
-      const dp = item.dp;
-      const titleClean = item.title ? item.title.trim() : 'Video';
-      const na = Buffer.from(titleClean).toString('base64');
-      const watchboxResult = await resolveWatchboxStream(targetId, targetSe, targetEp, dp, na, clientIp);
-      if (watchboxResult) {
-        resolvedVideoUrl = watchboxResult.videoUrl;
-        resolvedQualities = watchboxResult.qualities || [];
-      }
-    }
-
-    // Try Scenario 3 (embed_json resolver)
-    if (!resolvedVideoUrl && item.embed_json && Array.isArray(item.embed_json) && item.embed_json.length > 0) {
-      const embedItem = item.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
-      if (embedItem) {
-        const embedJsonResult = await resolveEmbedJsonStream(embedItem, clientIp);
-        if (embedJsonResult) {
-          resolvedVideoUrl = embedJsonResult.videoUrl;
-          resolvedQualities = embedJsonResult.qualities || [];
-          if (resolvedQualities.length === 0 && resolvedVideoUrl) {
-            const qualityMatch = (embedItem.name + resolvedVideoUrl).match(/(\d{3,4}p)/i);
-            resolvedQualities = [{
-              quality: qualityMatch ? qualityMatch[1].toUpperCase() : 'HD',
-              size: embedItem.size || 'N/A',
-              url: resolvedVideoUrl
-            }];
+      resolveTasks.push((async () => {
+        const rawEmbedUrl = item.embed;
+        const urlParamMatch = rawEmbedUrl.match(/url=([^&]+)/);
+        const sParamMatch = rawEmbedUrl.match(/[?&]s=([^&]+)/);
+        if (urlParamMatch) {
+          const decodedUrl = Buffer.from(urlParamMatch[1], 'base64').toString('ascii');
+          const videoUrl = await extractDirectVideoLink(decodedUrl);
+          if (videoUrl) {
+            let sizeLabel = 'N/A';
+            if (sParamMatch) {
+              try { sizeLabel = Buffer.from(sParamMatch[1], 'base64').toString('ascii').trim(); } catch (_) { }
+            }
+            const qualityMatch = (rawEmbedUrl + videoUrl + (item.title || '')).match(/(\d{3,4}p)/i);
+            return {
+              videoUrl,
+              qualities: [{
+                quality: qualityMatch ? qualityMatch[1].toUpperCase() : 'HD',
+                size: sizeLabel,
+                url: videoUrl
+              }]
+            };
           }
         }
+        throw new Error('Embed resolution failed');
+      })());
+    }
+
+    // Scenario 2: Watchbox with Signatures
+    if (item.dp) {
+      resolveTasks.push((async () => {
+        const dp = item.dp;
+        const titleClean = item.title ? item.title.trim() : 'Video';
+        const na = Buffer.from(titleClean).toString('base64');
+        const res = await resolveWatchboxStream(targetId, targetSe, targetEp, dp, na, clientIp);
+        if (res && res.videoUrl) return res;
+        throw new Error('Watchbox resolution failed');
+      })());
+    }
+
+    // Scenario 3: embed_json
+    if (item.embed_json && Array.isArray(item.embed_json) && item.embed_json.length > 0) {
+      resolveTasks.push((async () => {
+        const embedItem = item.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
+        if (embedItem) {
+          const res = await resolveEmbedJsonStream(embedItem, clientIp);
+          if (res && res.videoUrl) {
+            let qList = res.qualities || [];
+            if (qList.length === 0) {
+              const qualityMatch = (embedItem.name + res.videoUrl).match(/(\d{3,4}p)/i);
+              qList = [{
+                quality: qualityMatch ? qualityMatch[1].toUpperCase() : 'HD',
+                size: embedItem.size || 'N/A',
+                url: res.videoUrl
+              }];
+            }
+            return { videoUrl: res.videoUrl, qualities: qList };
+          }
+        }
+        throw new Error('EmbedJSON resolution failed');
+      })());
+    }
+
+    if (resolveTasks.length > 0) {
+      try {
+        console.log(`📡 Spawning ${resolveTasks.length} parallel stream resolver tasks...`);
+        const fastestSuccessfulResult = await Promise.any(resolveTasks);
+        resolvedVideoUrl = fastestSuccessfulResult.videoUrl;
+        resolvedQualities = fastestSuccessfulResult.qualities || [];
+      } catch (err) {
+        console.log('⚠️ Parallel stream resolution tasks failed. Trying sequential recovery fallback.');
       }
     }
 
