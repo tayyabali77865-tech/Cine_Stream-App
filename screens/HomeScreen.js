@@ -362,6 +362,7 @@ export default function HomeScreen({ navigation }) {
   const [showSidebar, setShowSidebar] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
+  const isTypingRef = useRef(false);
   // ── Animated values as refs — no state slot used, no extra re-render ──
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
   const slideAnim = useRef(new Animated.Value(250)).current;
@@ -630,11 +631,16 @@ export default function HomeScreen({ navigation }) {
   }, [activeFilter, activeCategory, loadTrendingData]);
 
   const handleSearch = useCallback((text) => {
+    isTypingRef.current = true;
     setSearchQuery(text);
   }, []);
 
   // Debounced search suggestions effect — only fetches suggestions, does not auto-search
   useEffect(() => {
+    if (!isTypingRef.current) {
+      return;
+    }
+
     if (searchQuery.trim() === '') {
       setSuggestions([]);
       if (isSearching) {
@@ -851,11 +857,12 @@ export default function HomeScreen({ navigation }) {
   }, [isSearching, searchQuery, triggerSearch, loadTrendingData, activeFilter, activeCategory]);
 
   const handleClearSearch = useCallback(() => {
-    handleSearch('');
+    isTypingRef.current = false;
+    setSearchQuery('');
     setSearchLanguage('All');
     setShowSearchFilterMenu(false);
     setSuggestions([]);
-  }, [handleSearch]);
+  }, []);
 
   const handleToggleFilterMenu = useCallback(
     () => {
@@ -887,6 +894,7 @@ export default function HomeScreen({ navigation }) {
           value={searchQuery}
           onChangeText={handleSearch}
           onSubmitEditing={() => {
+            isTypingRef.current = false;
             setSuggestions([]);
             triggerSearch(searchQuery);
           }}
@@ -904,6 +912,7 @@ export default function HomeScreen({ navigation }) {
         <TouchableOpacity
           style={styles.searchBtn}
           onPress={() => {
+            isTypingRef.current = false;
             setSuggestions([]);
             triggerSearch(searchQuery);
           }}
@@ -921,6 +930,7 @@ export default function HomeScreen({ navigation }) {
                 style={styles.suggestionRow}
                 activeOpacity={0.8}
                 onPress={() => {
+                  isTypingRef.current = false;
                   setSearchQuery(item);
                   setSuggestions([]);
                   triggerSearch(item);
