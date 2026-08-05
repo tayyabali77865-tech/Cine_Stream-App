@@ -259,71 +259,81 @@ export const apiService = {
       cleaned = cleaned.replace(/\s+/g, ' ').trim();
 
       const queryToSearch = cleaned || decodedQuery.trim();
-
-      // ─── Primary: Use backend API (bypasses Cloudflare WAF blocks) ────────────
-      try {
-        const response = await customFetch(`/search?q=${encodeURIComponent(queryToSearch)}&page=${page}`);
-        if (response.ok) {
-          const backendResults = await response.json();
-          if (Array.isArray(backendResults) && backendResults.length > 0) {
-            searchCache.set(cacheKey, backendResults);
-            return backendResults;
-          }
-        }
-      } catch (backendErr) {
-        console.warn(`⚠️ Backend /api/search failed: ${backendErr.message}. Trying direct mirrors...`);
-      }
-
-      // ─── Fallback: Direct mirror calls (if backend unreachable) ──────────────
       const formattedQuery = encodeURIComponent(queryToSearch).replace(/%20/g, '+');
-      const headers = {
+
+      const directHeaders = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Referer': 'https://netmirror.center/',
         'Origin': 'https://netmirror.center'
       };
 
-      // Query all mirrors in parallel to get instant results
-      const promises = allNetmirrorMirrors.map(async (mirror) => {
+      // ─── Run backend + direct mirrors in PARALLEL, then merge all results ──────
+      const backendPromise = customFetch(`/search?q=${encodeURIComponent(queryToSearch)}&page=${page}`)
+        .then(async (res) => {
+          if (!res.ok) return [];
+          const data = await res.json();
+          return Array.isArray(data) ? data : [];
+        })
+        .catch((err) => {
+          console.warn(`⚠️ Backend /api/search error: ${err.message}`);
+          return [];
+        });
+
+      const mirrorPromises = allNetmirrorMirrors.map(async (mirror) => {
         const url = `${mirror}/search2/${formattedQuery}?page=${page}`;
         try {
-          const response = await fetchWithTimeout(url, { headers }, 6000);
+          const response = await fetchWithTimeout(url, { headers: directHeaders }, 6000);
           if (!response.ok) return [];
           const rawData = await response.json();
           if (rawData.message && rawData.message.includes('Access denied')) return [];
-          return rawData.results || [];
+          // Map to standard shape
+          return (rawData.results || []).map(item => ({
+            id: item.id,
+            title: item.title ? item.title.trim() : 'Unknown Title',
+            poster: item.backdrop_path || 'https://placehold.co/300x450',
+            type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
+            releaseDate: item.release_date || 'N/A',
+            country: item.cn || '',
+            channel: item.channel || '',
+            rating: parseFloat(item.vote_average) || 0
+          }));
         } catch (err) {
           console.warn(`⚠️ Client Search parallel query failed on ${mirror}: ${err.message}`);
           return [];
         }
       });
 
-      const allResultsArray = await Promise.all(promises);
+      const [backendResults, ...mirrorResultsArrays] = await Promise.all([
+        backendPromise,
+        ...mirrorPromises
+      ]);
 
-      // Merge and deduplicate results by media ID
-      const mergedResults = [];
+      // Merge all sources and deduplicate by ID
       const seenIds = new Set();
-      for (const results of allResultsArray) {
-        for (const item of results) {
-          if (!seenIds.has(item.id)) {
-            seenIds.add(item.id);
-            mergedResults.push(item);
+      const merged = [];
+
+      // Add backend results first (already in standard shape)
+      for (const item of backendResults) {
+        if (item.id && !seenIds.has(String(item.id))) {
+          seenIds.add(String(item.id));
+          merged.push(item);
+        }
+      }
+
+      // Then add direct mirror results
+      for (const mirrorResults of mirrorResultsArrays) {
+        for (const item of mirrorResults) {
+          if (item.id && !seenIds.has(String(item.id))) {
+            seenIds.add(String(item.id));
+            merged.push(item);
           }
         }
       }
 
-      const mediaList = mergedResults.map(item => ({
-        id: item.id,
-        title: item.title ? item.title.trim() : 'Unknown Title',
-        poster: item.backdrop_path || 'https://placehold.co/300x450',
-        type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
-        releaseDate: item.release_date || 'N/A',
-        country: item.cn || '',
-        channel: item.channel || '',
-        rating: parseFloat(item.vote_average) || 0
-      }));
+      console.log(`[Search] "${queryToSearch}" page ${page}: backend=${backendResults.length}, mirrors=${mirrorResultsArrays.map(r => r.length).join('+')}, total=${merged.length}`);
 
-      searchCache.set(cacheKey, mediaList);
-      return mediaList;
+      searchCache.set(cacheKey, merged);
+      return merged;
     });
   },
 
