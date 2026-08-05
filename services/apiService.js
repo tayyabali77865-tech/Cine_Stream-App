@@ -259,8 +259,23 @@ export const apiService = {
       cleaned = cleaned.replace(/\s+/g, ' ').trim();
 
       const queryToSearch = cleaned || decodedQuery.trim();
-      const formattedQuery = encodeURIComponent(queryToSearch).replace(/%20/g, '+');
 
+      // ─── Primary: Use backend API (bypasses Cloudflare WAF blocks) ────────────
+      try {
+        const response = await customFetch(`/search?q=${encodeURIComponent(queryToSearch)}&page=${page}`);
+        if (response.ok) {
+          const backendResults = await response.json();
+          if (Array.isArray(backendResults) && backendResults.length > 0) {
+            searchCache.set(cacheKey, backendResults);
+            return backendResults;
+          }
+        }
+      } catch (backendErr) {
+        console.warn(`⚠️ Backend /api/search failed: ${backendErr.message}. Trying direct mirrors...`);
+      }
+
+      // ─── Fallback: Direct mirror calls (if backend unreachable) ──────────────
+      const formattedQuery = encodeURIComponent(queryToSearch).replace(/%20/g, '+');
       const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Referer': 'https://netmirror.center/',
