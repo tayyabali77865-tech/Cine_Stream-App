@@ -602,13 +602,18 @@ app.all('/api/stream/:id', async (req, res) => {
       console.log(`📦 Using client-provided metadata for ID: ${id}`);
     } else {
       console.log(`📡 Resolving stream for ID: ${id} (Season ${se}, Episode ${ep}, Lang ${lang})`);
-      const endpoint = `/movie/${id}`;
-      const { value: detailsData } = await detailsCache.get(endpoint);
-      const results = detailsData.results || [];
-      if (results.length === 0) {
-        throw new Error('Movie metadata not found.');
+      const cachedDetails = detailsCache.cache.get(`/movie/${id}`);
+      if (cachedDetails && cachedDetails.value && cachedDetails.value.results) {
+        item = cachedDetails.value.results[0];
+      } else {
+        const endpoint = `/movie/${id}`;
+        const { value: detailsData } = await detailsCache.get(endpoint);
+        const results = detailsData.results || [];
+        if (results.length === 0) {
+          throw new Error('Movie metadata not found.');
+        }
+        item = results[0];
       }
-      item = results[0];
     }
 
     let resolvedVideoUrl = null;
