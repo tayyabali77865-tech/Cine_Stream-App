@@ -602,18 +602,13 @@ app.all('/api/stream/:id', async (req, res) => {
       console.log(`📦 Using client-provided metadata for ID: ${id}`);
     } else {
       console.log(`📡 Resolving stream for ID: ${id} (Season ${se}, Episode ${ep}, Lang ${lang})`);
-      const cachedDetails = detailsCache.cache.get(`/movie/${id}`);
-      if (cachedDetails && cachedDetails.value && cachedDetails.value.results) {
-        item = cachedDetails.value.results[0];
-      } else {
-        const endpoint = `/movie/${id}`;
-        const { value: detailsData } = await detailsCache.get(endpoint);
-        const results = detailsData.results || [];
-        if (results.length === 0) {
-          throw new Error('Movie metadata not found.');
-        }
-        item = results[0];
+      const endpoint = `/movie/${id}`;
+      const { value: detailsData } = await detailsCache.get(endpoint);
+      const results = detailsData.results || [];
+      if (results.length === 0) {
+        throw new Error('Movie metadata not found.');
       }
+      item = results[0];
     }
 
     let resolvedVideoUrl = null;
@@ -712,86 +707,82 @@ app.all('/api/stream/:id', async (req, res) => {
 
 
     if (!resolvedVideoUrl) {
-      console.log(`⚠️ Failed to resolve stream for primary ID ${targetId}. Trying auto-recovery fallback in parallel...`);
+      console.log(`⚠️ Failed to resolve stream for primary ID ${targetId}. Trying auto-recovery fallback...`);
       const baseTitle = item.title.replace(/\[.*?\]/g, '').trim();
       const searchUrl = `/search2/${encodeURIComponent(baseTitle)}?page=0`;
       const searchRes = await fetchFromNetmirrorWithRetry(searchUrl).catch(() => null);
 
       if (searchRes && searchRes.results) {
-        const alternateItems = searchRes.results.filter(resItem => String(resItem.id) !== String(targetId)).slice(0, 3); // Limit to top 3 alternatives
+        const alternateItems = searchRes.results.filter(resItem => String(resItem.id) !== String(targetId));
 
-        const recoveryPromises = alternateItems.map(async (altItem) => {
+        for (const altItem of alternateItems) {
+          console.log(`🔄 Attempting recovery with alternate ID: ${altItem.id} ("${altItem.title}")`);
           try {
             const altDetailsRes = await fetchFromNetmirrorWithRetry(`/movie/${altItem.id}`);
             const altResults = altDetailsRes.results || [];
             if (altResults.length > 0) {
               const altItemMeta = altResults[0];
 
-              let altVideoUrl = null;
-              let altQualities = [];
-
-              // Check Scenario 1 (direct embed)
               if (altItemMeta.embed) {
                 const rawEmbedUrl = altItemMeta.embed;
                 const urlParamMatch = rawEmbedUrl.match(/url=([^&]+)/);
                 const sParamMatch = rawEmbedUrl.match(/[?&]s=([^&]+)/);
                 if (urlParamMatch) {
                   const decodedUrl = Buffer.from(urlParamMatch[1], 'base64').toString('ascii');
-                  altVideoUrl = await extractDirectVideoLink(decodedUrl);
-                  if (altVideoUrl) {
+                  resolvedVideoUrl = await extractDirectVideoLink(decodedUrl);
+                  if (resolvedVideoUrl) {
                     let sizeLabel = 'N/A';
                     if (sParamMatch) {
                       try { sizeLabel = Buffer.from(sParamMatch[1], 'base64').toString('ascii').trim(); } catch (_) { }
                     }
-                    const qualityMatch = (rawEmbedUrl + altVideoUrl + (altItemMeta.title || '')).match(/(\d{3,4}p)/i);
-                    altQualities = [{
+                    const qualityMatch = (rawEmbedUrl + resolvedVideoUrl + (altItemMeta.title || '')).match(/(\d{3,4}p)/i);
+                    resolvedQualities = [{
                       quality: qualityMatch ? qualityMatch[1].toUpperCase() : 'HD',
                       size: sizeLabel,
-                      url: altVideoUrl
+                      url: resolvedVideoUrl
                     }];
                   }
                 }
               }
 
-              // Check Scenario 2 (watchbox)
-              if (!altVideoUrl && altItemMeta.dp) {
+              if (!resolvedVideoUrl && altItemMeta.dp) {
                 const altNa = Buffer.from(altItemMeta.title ? altItemMeta.title.trim() : 'Video').toString('base64');
                 const watchboxResult = await resolveWatchboxStream(altItem.id, targetSe, targetEp, altItemMeta.dp, altNa, clientIp);
                 if (watchboxResult) {
-                  altVideoUrl = watchboxResult.videoUrl;
-                  altQualities = watchboxResult.qualities || [];
+                  resolvedVideoUrl = watchboxResult.videoUrl;
+                  resolvedQualities = watchboxResult.qualities || [];
                 }
               }
 
-              // Check Scenario 3 (embed_json)
-              if (!altVideoUrl && altItemMeta.embed_json && Array.isArray(altItemMeta.embed_json) && altItemMeta.embed_json.length > 0) {
+              if (!resolvedVideoUrl && altItemMeta.embed_json && Array.isArray(altItemMeta.embed_json) && altItemMeta.embed_json.length > 0) {
                 const altEmbedItem = altItemMeta.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
                 if (altEmbedItem) {
                   const embedJsonResult = await resolveEmbedJsonStream(altEmbedItem, clientIp);
                   if (embedJsonResult) {
-                    altVideoUrl = embedJsonResult.videoUrl;
-                    altQualities = embedJsonResult.qualities || [];
+                    resolvedVideoUrl = embedJsonResult.videoUrl;
+                    resolvedQualities = embedJsonResult.qualities || [];
+                    if (resolvedQualities.length === 0 && resolvedVideoUrl) {
+                      const qualityMatch = (altEmbedItem.name + resolvedVideoUrl).match(/(\d{3,4}p)/i);
+                      resolvedQualities = [{
+                        quality: qualityMatch ? qualityMatch[1].toUpperCase() : 'HD',
+                        size: altEmbedItem.size || 'N/A',
+                        url: resolvedVideoUrl
+                      }];
+                    }
                   }
                 }
               }
 
-              if (altVideoUrl) {
-                return { videoUrl: altVideoUrl, qualities: altQualities, id: altItem.id };
+
+
+              if (resolvedVideoUrl) {
+                console.log(`🔥 Recovery SUCCESS! Using stream from alternate ID ${altItem.id}`);
+                break;
               }
             }
-            throw new Error('No stream resolved on this alternative.');
-          } catch (e) {
-            throw e;
+          } catch (altErr) {
+            console.log(`⚠️ Alternate ID ${altItem.id} recovery failed: ${altErr.message}`);
           }
-        });
-
-        try {
-          const fastRecovery = await Promise.any(recoveryPromises);
-          resolvedVideoUrl = fastRecovery.videoUrl;
-          resolvedQualities = fastRecovery.qualities;
-          console.log(`🔥 Parallel Recovery SUCCESS! Using stream from alternate ID ${fastRecovery.id}`);
-        } catch (recoveryErr) {
-          console.log('⚠️ All alternate recovery attempts failed.');
         }
       }
     }
@@ -1033,10 +1024,7 @@ function parseWatchboxQualities(html) {
 async function extractDirectVideoLink(hostUrl) {
   try {
     console.log(`📡 Parsing hosting server: ${hostUrl}`);
-    const res = await axios.get(hostUrl, { 
-      headers: getHeaders(),
-      timeout: 5000 
-    });
+    const res = await axios.get(hostUrl, { headers: getHeaders() });
     const html = res.data;
     const $ = cheerio.load(html);
 
