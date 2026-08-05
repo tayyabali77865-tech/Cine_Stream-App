@@ -474,6 +474,7 @@ export default function HomeScreen({ navigation }) {
         setHasMore(true);
       }
 
+      const startTime = Date.now();
       let currentPage = targetPage;
       let accumulatedData = [];
       const targetCount = isLoadMore ? 10 : 10; // 10 initial cards = 1 page fetch = instant display
@@ -550,6 +551,11 @@ export default function HomeScreen({ navigation }) {
       // Enforce even length at the end in case we broke early
       if (accumulatedData.length % 2 !== 0) {
         accumulatedData = accumulatedData.slice(0, -1);
+      }
+
+      const elapsed = Date.now() - startTime;
+      if (isLoadMore && elapsed < 600) {
+        await new Promise(resolve => setTimeout(resolve, 600 - elapsed));
       }
 
       if (accumulatedData.length === 0 && targetPage === 0) {
@@ -685,6 +691,7 @@ export default function HomeScreen({ navigation }) {
       setLoadingMore(true);
       loadingMoreRef.current = true;
 
+      const startTime = Date.now();
       let currentPage = targetPage;
       let accumulatedData = [];
       const targetCount = 10;
@@ -710,6 +717,11 @@ export default function HomeScreen({ navigation }) {
         }
 
         currentPage++;
+      }
+
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 600) {
+        await new Promise(resolve => setTimeout(resolve, 600 - elapsed));
       }
 
       if (accumulatedData.length > 0) {
