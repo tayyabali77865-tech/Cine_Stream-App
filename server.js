@@ -440,8 +440,19 @@ app.get('/api/search', async (req, res) => {
   try {
     // 1. Decode incoming query to strip double-encoding (e.g. %2520 -> %20)
     const decodedQuery = decodeURIComponent(query);
+
+    // Clean query to prevent Netmirror search failure (strip colons, brackets, season tags)
+    let cleaned = decodedQuery.toLowerCase();
+    cleaned = cleaned.replace(/\[.*?\]/g, ' ');
+    cleaned = cleaned.replace(/\(.*?\)/g, ' ');
+    cleaned = cleaned.replace(/\b(s\d+|season\s*\d+|part\s*\d+)\b/gi, ' ');
+    cleaned = cleaned.replace(/[^a-z0-9\s]/g, ' ');
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+    const queryToSearch = cleaned || decodedQuery.trim();
+
     // 2. Format spaces as '+' which is the standard parser notation for NetMirror search endpoints
-    const formattedQuery = encodeURIComponent(decodedQuery.trim()).replace(/%20/g, '+');
+    const formattedQuery = encodeURIComponent(queryToSearch).replace(/%20/g, '+');
     const endpoint = `/search2/${formattedQuery}?page=${page}`;
 
     // ✅ Use searchCache safely by retrieving wrapper value property explicitly
