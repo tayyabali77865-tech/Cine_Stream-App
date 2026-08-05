@@ -553,6 +553,7 @@ app.get('/api/details/:id', async (req, res) => {
       seasons: seasonsList,
       audioLanguages: alternateDubs,
       trailer: item.trailer || null,
+      _rawItem: item,
     });
   } catch (error) {
     console.error(`Error fetching details for ID ${id}:`, error.message);

@@ -172,9 +172,11 @@ async function customFetch(endpoint, options = {}) {
   if (!isUrlOnCooldown(activeBaseUrl)) {
     try {
       const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 15000);
-      if (response.ok) return response;
-      markUrlFailed(activeBaseUrl);
+      // ✅ Any HTTP response (even 4xx/5xx) means server is reachable — return it
+      // Only network-level errors (throws) should mark URL as failed
+      return response;
     } catch (err) {
+      // Network/timeout error → server unreachable → mark as failed
       markUrlFailed(activeBaseUrl);
       console.log(`⚠️ ${activeBaseUrl} failed: ${err.message}`);
     }
@@ -204,9 +206,10 @@ async function customFetch(endpoint, options = {}) {
       activeBaseUrl = workingUrl;
       console.log(`🎯 Switched to: ${activeBaseUrl}`);
       const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 15000);
-      if (response.ok) return response;
+      // ✅ Return any HTTP response — caller handles status codes
+      return response;
     } catch (_) {
-      // All failed
+      // All failed at network level
     }
   }
 
@@ -347,16 +350,24 @@ export const apiService = {
     if (cached) return cached;
 
     return deduplicatedFetch(cacheKey, async () => {
-      const headers = {
+      const directHeaders = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Referer': 'https://netmirror.center/',
         'Origin': 'https://netmirror.center'
       };
 
-      // Query all mirrors in parallel, first successful response wins
-      const promises = allNetmirrorMirrors.map(async (mirror) => {
+      // ─── Backend + all direct mirrors in parallel, first valid wins ──────────
+      const backendPromise = customFetch(`/details/${id}`)
+        .then(async (res) => {
+          if (!res.ok) throw new Error(`Backend details HTTP ${res.status}`);
+          const data = await res.json();
+          if (!data || !data.id) throw new Error('Backend returned empty details');
+          return { source: 'backend', data };
+        });
+
+      const mirrorPromises = allNetmirrorMirrors.map(async (mirror) => {
         const url = `${mirror}/movie/${id}`;
-        const response = await fetchWithTimeout(url, { headers }, 6000);
+        const response = await fetchWithTimeout(url, { headers: directHeaders }, 6000);
         if (!response.ok) throw new Error(`HTTP status ${response.status}`);
         const data = await response.json();
         if (data.message && data.message.includes('Access denied')) {
@@ -364,47 +375,70 @@ export const apiService = {
         }
         const results = data.results || [];
         if (results.length === 0) throw new Error('Details empty');
-        
-        // Track the working mirror
         activeNetmirrorMirror = mirror;
-        return results[0];
+        return { source: 'mirror', data: results[0] };
       });
 
+      let resolved;
       try {
-        const item = await Promise.any(promises);
-
-        const alternateDubs = [];
-        const titleStr = item.title ? String(item.title) : 'Unknown Title';
-        const titleLower = titleStr.toLowerCase();
-        if (titleLower.includes('hindi')) alternateDubs.push('Hindi');
-        if (titleLower.includes('english')) alternateDubs.push('English');
-        if (titleLower.includes('tamil')) alternateDubs.push('Tamil');
-        if (titleLower.includes('telugu')) alternateDubs.push('Telugu');
-        if (alternateDubs.length === 0) alternateDubs.push('Original');
-
-        const hasValidSeasons = Array.isArray(item.season) && item.season.length > 0 && item.season.some(s => s && s.se > 0);
-        const mediaType = hasValidSeasons ? 'TV Show' : 'Movie';
-        const seasonsList = hasValidSeasons ? item.season : null;
-
-        const detailsData = {
-          id: item.id,
-          title: item.title ? item.title.trim() : 'Unknown Title',
-          description: item.dis || 'No description available.',
-          poster: item.backdrop_path || 'https://placehold.co/300x450',
-          type: mediaType,
-          seasons: seasonsList,
-          audioLanguages: alternateDubs,
-          trailer: item.trailer || null,
-          _rawItem: item
-        };
-
-        detailsCache.set(cacheKey, detailsData);
-        return detailsData;
+        resolved = await Promise.any([backendPromise, ...mirrorPromises]);
       } catch (err) {
         throw new Error('Failed to retrieve movie details from any mirror.');
       }
+
+      // Normalize — backend already returns shaped data, mirror returns raw item
+      let item;
+      if (resolved.source === 'backend') {
+        // Backend /api/details/:id returns already-shaped object
+        const bd = resolved.data;
+        const detailsData = {
+          id: bd.id,
+          title: bd.title || 'Unknown Title',
+          description: bd.description || 'No description available.',
+          poster: bd.poster || 'https://placehold.co/300x450',
+          type: bd.type || 'Movie',
+          seasons: bd.seasons || null,
+          audioLanguages: bd.audioLanguages || ['Original'],
+          trailer: bd.trailer || null,
+          _rawItem: bd._rawItem || bd
+        };
+        detailsCache.set(cacheKey, detailsData);
+        return detailsData;
+      } else {
+        item = resolved.data;
+      }
+
+      // Mirror raw item → shape
+      const alternateDubs = [];
+      const titleStr = item.title ? String(item.title) : 'Unknown Title';
+      const titleLower = titleStr.toLowerCase();
+      if (titleLower.includes('hindi')) alternateDubs.push('Hindi');
+      if (titleLower.includes('english')) alternateDubs.push('English');
+      if (titleLower.includes('tamil')) alternateDubs.push('Tamil');
+      if (titleLower.includes('telugu')) alternateDubs.push('Telugu');
+      if (alternateDubs.length === 0) alternateDubs.push('Original');
+
+      const hasValidSeasons = Array.isArray(item.season) && item.season.length > 0 && item.season.some(s => s && s.se > 0);
+      const mediaType = hasValidSeasons ? 'TV Show' : 'Movie';
+      const seasonsList = hasValidSeasons ? item.season : null;
+
+      const detailsData = {
+        id: item.id,
+        title: item.title ? item.title.trim() : 'Unknown Title',
+        description: item.dis || 'No description available.',
+        poster: item.backdrop_path || 'https://placehold.co/300x450',
+        type: mediaType,
+        seasons: seasonsList,
+        audioLanguages: alternateDubs,
+        trailer: item.trailer || null,
+        _rawItem: item
+      };
+
+      detailsCache.set(cacheKey, detailsData);
+      return detailsData;
     });
   },
+
 
   /**
    * Resolves the direct video CDN stream source URL.
