@@ -251,7 +251,17 @@ export const apiService = {
 
     return deduplicatedFetch(cacheKey, async () => {
       const decodedQuery = decodeURIComponent(query);
-      const formattedQuery = encodeURIComponent(decodedQuery.trim()).replace(/%20/g, '+');
+
+      // Clean query to prevent Netmirror search failure (strip colons, brackets, season tags)
+      let cleaned = decodedQuery.toLowerCase();
+      cleaned = cleaned.replace(/\[.*?\]/g, ' ');
+      cleaned = cleaned.replace(/\(.*?\)/g, ' ');
+      cleaned = cleaned.replace(/\b(s\d+|season\s*\d+|part\s*\d+)\b/gi, ' ');
+      cleaned = cleaned.replace(/[^a-z0-9\s]/g, ' ');
+      cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+      const queryToSearch = cleaned || decodedQuery.trim();
+      const formattedQuery = encodeURIComponent(queryToSearch).replace(/%20/g, '+');
 
       const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
