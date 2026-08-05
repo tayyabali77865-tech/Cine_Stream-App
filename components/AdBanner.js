@@ -409,4 +409,136 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  popupCard: {
+    width: SCREEN_WIDTH * 0.85,
+    height: SCREEN_HEIGHT * 0.6,
+    backgroundColor: '#1C1C24',
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#374151',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  popupHeader: {
+    height: 48,
+    backgroundColor: '#12121A',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderColor: '#374151',
+  },
+  popupCountdownText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  popupCloseBtn: {
+    backgroundColor: '#E50914',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignSelf: 'center',
+  },
+  popupCloseBtnText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  popupWebContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  popupWebView: {
+    flex: 1,
+  },
 });
+
+// ─── Smart Link Ad Modal Component ──────────────────────────────────────────
+export function SmartLinkAdModal({ visible, onClose, adUrl }) {
+  const { adsEnabled } = useAds();
+  const [countdown, setCountdown] = useState(5);
+  const [canClose, setCanClose] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (!visible || !adsEnabled) return;
+
+    setCanClose(false);
+    setCountdown(5);
+
+    timerRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          setCanClose(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [visible, adsEnabled]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (canClose) {
+        onClose?.();
+      }
+      return true; // Swallows back button press
+    });
+    return () => sub.remove();
+  }, [visible, canClose, onClose]);
+
+  if (!adsEnabled || !visible || !adUrl) return null;
+
+  return (
+    <Modal visible={visible} transparent={true} animationType="fade" statusBarTranslucent>
+      <View style={styles.modalOverlay}>
+        <View style={styles.popupCard}>
+          {/* Header/Controls bar */}
+          <View style={styles.popupHeader}>
+            {!canClose ? (
+              <Text style={styles.popupCountdownText}>Ad Closes in {countdown}s</Text>
+            ) : (
+              <TouchableOpacity style={styles.popupCloseBtn} onPress={onClose} activeOpacity={0.7}>
+                <Text style={styles.popupCloseBtnText}>✕ Close Ad</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* WebView Container */}
+          <View style={styles.popupWebContainer}>
+            <WebView
+              source={{ uri: adUrl }}
+              style={styles.popupWebView}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              mixedContentMode="always"
+              allowsInlineMediaPlayback={true}
+              mediaPlaybackRequiresUserAction={false}
+              onError={() => {}}
+            />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+

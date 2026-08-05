@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { apiService } from '../services/apiService';
-import { AdBanner300x250 } from '../components/AdBanner';
+import { AdBanner300x250, SmartLinkAdModal } from '../components/AdBanner';
 import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
@@ -54,6 +54,17 @@ export default function DetailsScreen({ route, navigation }) {
   const [isMuted, setIsMuted] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showSeeMore, setShowSeeMore] = useState(false);
+  const [adVisible, setAdVisible] = useState(false);
+
+  const handleAdClose = useCallback(() => {
+    setAdVisible(false);
+  }, []);
+
+  useEffect(() => {
+    if (details) {
+      setAdVisible(true);
+    }
+  }, [details]);
 
   const handleTextLayout = useCallback((e) => {
     if (e.nativeEvent.lines.length > 5) {
@@ -356,6 +367,12 @@ export default function DetailsScreen({ route, navigation }) {
         )}
         <AdBanner300x250 />
       </View>
+
+      <SmartLinkAdModal
+        visible={adVisible}
+        onClose={handleAdClose}
+        adUrl="https://omg10.com/4/11503020"
+      />
     </ScrollView>
   );
 }

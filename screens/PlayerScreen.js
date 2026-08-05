@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { apiService } from '../services/apiService';
-import { AdBanner300x250 } from '../components/AdBanner';
+import { AdBanner300x250, SmartLinkAdModal } from '../components/AdBanner';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -162,6 +162,17 @@ export default function PlayerScreen({ route, navigation }) {
   const [isLandscape, setIsLandscape] = React.useState(false);
   const [isSeeking, setIsSeeking] = React.useState(false);
   const [seekPosition, setSeekPosition] = React.useState(0);
+  const [adVisible, setAdVisible] = React.useState(false);
+  const [adUrl, setAdUrl] = React.useState("https://omg10.com/4/11503019");
+
+  const handleAdClose = useCallback(() => {
+    setAdVisible(false);
+  }, []);
+
+  React.useEffect(() => {
+    setAdUrl("https://omg10.com/4/11503019");
+    setAdVisible(true);
+  }, []);
 
   // ── Refs (no re-render needed) ────────────────────────────────────────────
   const videoRef = useRef(null);
@@ -401,6 +412,8 @@ export default function PlayerScreen({ route, navigation }) {
   // ── Start Download ────────────────────────────────────────────────────────
   const startDownload = useCallback(async (quality) => {
     dispatchQuality({ type: 'CLOSE' });
+    setAdUrl("https://omg10.com/4/11503004");
+    setAdVisible(true);
 
     const { status } = await MediaLibrary.requestPermissionsAsync();
     if (status !== 'granted') {
@@ -437,7 +450,7 @@ export default function PlayerScreen({ route, navigation }) {
     );
 
     await runDownload(fileUri);
-  }, [videoTitle, qualityState.referer, makeCallback]);
+  }, [videoTitle, qualityState.referer, makeCallback, setAdUrl, setAdVisible]);
 
   // ── Core Download Runner ──────────────────────────────────────────────────
   const runDownload = useCallback(async (fileUri) => {
@@ -907,6 +920,12 @@ export default function PlayerScreen({ route, navigation }) {
           </View>
         </View>
       )}
+
+      <SmartLinkAdModal
+        visible={adVisible}
+        onClose={handleAdClose}
+        adUrl={adUrl}
+      />
     </View>
   );
 }

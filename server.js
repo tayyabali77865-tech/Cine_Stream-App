@@ -1245,7 +1245,7 @@ app.delete('/api/reported-errors/:id', async (req, res) => {
 // In-memory ad config — toggle ads remotely without any app update
 // To persist across server restarts, this can be moved to MongoDB.
 let adConfigStore = {
-  adsEnabled: false,          // Master toggle — set to true to show ads to all users
+  adsEnabled: true,          // Master toggle — set to true to show ads to all users
   interstitialCloseDelay: 5,  // Seconds before close button appears on interstitial
   rewardedAdDuration: 30,     // Seconds user must watch rewarded ad before claiming reward
   rewardedTriggers: {
