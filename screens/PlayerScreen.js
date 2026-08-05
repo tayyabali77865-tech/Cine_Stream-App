@@ -745,7 +745,7 @@ export default function PlayerScreen({ route, navigation }) {
                       <Text style={styles.seekText}>-10s</Text>
                     </TouchableOpacity>
 
-                    {(!playbackStatus || !playbackStatus.isLoaded || isBuffering) ? (
+                    {(!playbackStatus || !playbackStatus.isLoaded) ? (
                       <View style={{ width: isLandscape ? 52 : 60, height: isLandscape ? 52 : 60, alignItems: 'center', justifyContent: 'center' }}>
                         <ActivityIndicator size="large" color="#E50914" />
                       </View>

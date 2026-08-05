@@ -40,6 +40,9 @@ export function AdBanner300x250() {
         scrollEnabled={false}
         javaScriptEnabled={true}
         domStorageEnabled={true}
+        databaseEnabled={true}
+        cacheEnabled={true}
+        cacheMode="LOAD_CACHE_ELSE_NETWORK"
         mixedContentMode="always"
         allowsInlineMediaPlayback={true}
         mediaPlaybackRequiresUserAction={false}
@@ -63,6 +66,9 @@ export function AdBanner728x90() {
         scrollEnabled={false}
         javaScriptEnabled={true}
         domStorageEnabled={true}
+        databaseEnabled={true}
+        cacheEnabled={true}
+        cacheMode="LOAD_CACHE_ELSE_NETWORK"
         mixedContentMode="always"
         onError={() => {}}
       />
@@ -84,6 +90,9 @@ export function AdBannerNative() {
         scrollEnabled={false}
         javaScriptEnabled={true}
         domStorageEnabled={true}
+        databaseEnabled={true}
+        cacheEnabled={true}
+        cacheMode="LOAD_CACHE_ELSE_NETWORK"
         mixedContentMode="always"
         onError={() => {}}
       />
@@ -129,6 +138,9 @@ export function InterstitialAd({ visible, onClose }) {
           style={styles.interstitialWebView}
           javaScriptEnabled={true}
           domStorageEnabled={true}
+          databaseEnabled={true}
+          cacheEnabled={true}
+          cacheMode="LOAD_CACHE_ELSE_NETWORK"
           mixedContentMode="always"
           allowsInlineMediaPlayback={true}
           mediaPlaybackRequiresUserAction={false}
@@ -158,6 +170,9 @@ export function BackgroundAdHandler() {
         style={styles.hidden}
         javaScriptEnabled={true}
         domStorageEnabled={true}
+        databaseEnabled={true}
+        cacheEnabled={true}
+        cacheMode="LOAD_CACHE_ELSE_NETWORK"
         mixedContentMode="always"
         onError={() => {}}
       />
@@ -229,6 +244,9 @@ export function RewardedAd({ visible, rewardLabel, onRewarded, onClose }) {
           style={styles.rewardedWebView}
           javaScriptEnabled={true}
           domStorageEnabled={true}
+          databaseEnabled={true}
+          cacheEnabled={true}
+          cacheMode="LOAD_CACHE_ELSE_NETWORK"
           mixedContentMode="always"
           allowsInlineMediaPlayback={true}
           mediaPlaybackRequiresUserAction={false}
@@ -530,6 +548,9 @@ export function SmartLinkAdModal({ visible, onClose, adUrl }) {
               style={styles.popupWebView}
               javaScriptEnabled={true}
               domStorageEnabled={true}
+              databaseEnabled={true}
+              cacheEnabled={true}
+              cacheMode="LOAD_CACHE_ELSE_NETWORK"
               mixedContentMode="always"
               allowsInlineMediaPlayback={true}
               mediaPlaybackRequiresUserAction={false}
