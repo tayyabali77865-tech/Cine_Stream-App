@@ -49,8 +49,7 @@ async function ensureNetmirrorMirrors() {
   }
 }
 
-// Start fetching mirrors in the background immediately
-ensureNetmirrorMirrors().catch(() => {});
+
 
 // ─── URL Cooldown Tracker ─────────────────────────────────────────────────────
 
@@ -503,3 +502,6 @@ export const apiService = {
     }
   }
 };
+
+// Start fetching mirrors in the background after all declarations are complete
+ensureNetmirrorMirrors().catch(() => {});
