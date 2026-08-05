@@ -365,6 +365,7 @@ export default function HomeScreen({ navigation }) {
   const isTypingRef = useRef(false);
   const [searchMediaList, setSearchMediaList] = useState([]);
   const searchMediaListRef = useRef(searchMediaList);
+  const searchInputRef = useRef(null);
   // ── Animated values as refs — no state slot used, no extra re-render ──
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
   const slideAnim = useRef(new Animated.Value(250)).current;
@@ -863,6 +864,9 @@ export default function HomeScreen({ navigation }) {
     setSearchLanguage('All');
     setShowSearchFilterMenu(false);
     setSuggestions([]);
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
   }, []);
 
   const handleToggleFilterMenu = useCallback(
@@ -890,6 +894,7 @@ export default function HomeScreen({ navigation }) {
       {/* Search Input Bar with Cross Clear Icon and Search Button */}
       <View style={styles.searchContainer}>
         <TextInput
+          ref={searchInputRef}
           placeholder="Search Movie, Series or Anime"
           placeholderTextColor="#9CA3AF"
           value={searchQuery}
