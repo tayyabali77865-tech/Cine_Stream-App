@@ -8,6 +8,8 @@ class DynamicMirrorManager {
     this.checkIntervalMs = checkIntervalMs || 300000; // 5 minutes
     this.activeMirror = defaultMirrors[0];
     this.sortedMirrors = [...defaultMirrors];
+    this.filterMirrors = [...defaultMirrors];
+    this.searchMirrors = [...defaultMirrors];
     this.headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Referer': 'https://fmoviesunblocked.net/'
@@ -75,45 +77,81 @@ class DynamicMirrorManager {
   async testMirrors() {
     const tested = [];
     for (const mirror of this.mirrors) {
-      const start = Date.now();
+      let filterOnline = false;
+      let searchOnline = false;
+      let filterLatency = Infinity;
+      let searchLatency = Infinity;
+
+      const t1 = Date.now();
       try {
-        // Test basic filtering endpoint (Relaxed timeout to 4000ms)
+        // Test basic filtering endpoint (Relaxed timeout to 4000ms) using fmovies referer
         await axios.get(`${mirror}/movies/filter?sort_by=date&items_per_page=1&page=0`, {
-          headers: this.headers,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://fmoviesunblocked.net/'
+          },
           timeout: 4000
         });
-        
-        // Test search endpoint availability (Relaxed timeout to 4000ms)
-        const searchRes = await axios.get(`${mirror}/search2/a?page=0`, {
-          headers: this.headers,
-          timeout: 4000
-        });
-
-        // Simply check if response exists and has a results property array (ensure it returns actual results)
-        if (!searchRes.data || !Array.isArray(searchRes.data.results) || searchRes.data.results.length === 0) {
-          throw new Error('Invalid search response format or returned empty results.');
-        }
-
-        const latency = Date.now() - start;
-        tested.push({ mirror, latency, online: true });
+        filterOnline = true;
+        filterLatency = Date.now() - t1;
       } catch (err) {
-        tested.push({ mirror, latency: Infinity, online: false });
+        // ignore
       }
+
+      const t2 = Date.now();
+      try {
+        // Test search endpoint availability (Relaxed timeout to 4000ms) using netmirror.center referer
+        const searchRes = await axios.get(`${mirror}/search2/Moana?page=0`, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://netmirror.center/',
+            'Origin': 'https://netmirror.center'
+          },
+          timeout: 4000
+        });
+
+        // Simply check if response exists and has a results property array
+        if (searchRes.data && Array.isArray(searchRes.data.results) && searchRes.data.results.length > 0) {
+          searchOnline = true;
+          searchLatency = Date.now() - t2;
+        }
+      } catch (err) {
+        // ignore
+      }
+
+      console.log(`[MirrorManager] Mirror ${mirror} checked: filterOnline=${filterOnline} (${filterLatency}ms), searchOnline=${searchOnline} (${searchLatency}ms)`);
+      tested.push({ mirror, filterOnline, searchOnline, filterLatency, searchLatency });
     }
 
-    const sorted = tested
-      .filter(t => t.online)
-      .sort((a, b) => a.latency - b.latency)
+    const validFilters = tested
+      .filter(t => t.filterOnline)
+      .sort((a, b) => a.filterLatency - b.filterLatency)
       .map(t => t.mirror);
 
-    if (sorted.length > 0) {
-      this.sortedMirrors = sorted;
-      this.activeMirror = sorted[0];
-      console.log(`[MirrorManager] Sorted mirrors by latency:`, tested);
+    const validSearches = tested
+      .filter(t => t.searchOnline)
+      .sort((a, b) => a.searchLatency - b.searchLatency)
+      .map(t => t.mirror);
+
+    if (validFilters.length > 0) {
+      this.filterMirrors = validFilters;
+      this.activeMirror = validFilters[0];
+      this.sortedMirrors = validFilters;
+      console.log(`[MirrorManager] Filter mirrors sorted by latency:`, validFilters);
       console.log(`[MirrorManager] Active primary mirror selected: ${this.activeMirror}`);
     } else {
-      console.warn('[MirrorManager] No mirrors are currently online! Falling back to first default mirror.');
+      console.warn('[MirrorManager] No filter mirrors online! Falling back to first default mirror.');
+      this.filterMirrors = [this.mirrors[0]];
       this.activeMirror = this.mirrors[0];
+      this.sortedMirrors = [this.mirrors[0]];
+    }
+
+    if (validSearches.length > 0) {
+      this.searchMirrors = validSearches;
+      console.log(`[MirrorManager] Search mirrors sorted by latency:`, validSearches);
+    } else {
+      console.warn('[MirrorManager] No search mirrors online! Falling back to all mirrors.');
+      this.searchMirrors = [...this.mirrors];
     }
   }
 
@@ -122,7 +160,11 @@ class DynamicMirrorManager {
   }
 
   getMirrors() {
-    return this.sortedMirrors.length > 0 ? this.sortedMirrors : this.mirrors;
+    return this.filterMirrors.length > 0 ? this.filterMirrors : this.mirrors;
+  }
+
+  getSearchMirrors() {
+    return this.searchMirrors.length > 0 ? this.searchMirrors : this.mirrors;
   }
 
   rotateMirror() {

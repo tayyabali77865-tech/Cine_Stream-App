@@ -451,14 +451,18 @@ app.get('/api/search', async (req, res) => {
     const queryToSearch = cleaned || decodedQuery.trim();
     const formattedQuery = encodeURIComponent(queryToSearch).replace(/%20/g, '+');
 
-    const allMirrors = mirrorManager.getMirrors();
+    const allMirrors = mirrorManager.getSearchMirrors();
 
     // Query all available mirrors in parallel — same strategy as client used to do
     const mirrorPromises = allMirrors.map(async (mirror) => {
       const url = `${mirror}/search2/${formattedQuery}?page=${page}`;
       try {
         const res = await axios.get(url, {
-          headers: getHeaders(),
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://netmirror.center/',
+            'Origin': 'https://netmirror.center'
+          },
           timeout: 6000
         });
         const data = res.data;
