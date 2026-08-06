@@ -277,14 +277,15 @@ export const apiService = {
       const decodedQuery = decodeURIComponent(query);
 
       // Clean query to prevent Netmirror search failure (strip colons, brackets, season tags)
-      let cleaned = decodedQuery.toLowerCase();
+      let cleaned = decodedQuery;
       cleaned = cleaned.replace(/\[.*?\]/g, ' ');
       cleaned = cleaned.replace(/\(.*?\)/g, ' ');
       cleaned = cleaned.replace(/\b(s\d+|season\s*\d+|part\s*\d+)\b/gi, ' ');
-      cleaned = cleaned.replace(/[^a-z0-9\s]/g, ' ');
+      cleaned = cleaned.replace(/[^a-zA-Z0-9\s]/g, ' ');
       cleaned = cleaned.replace(/\s+/g, ' ').trim();
 
-      const queryToSearch = cleaned || decodedQuery.trim();
+      let queryToSearch = cleaned || decodedQuery.trim();
+      queryToSearch = queryToSearch.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
       const formattedQuery = encodeURIComponent(queryToSearch).replace(/%20/g, '+');
 
       const directHeaders = {
