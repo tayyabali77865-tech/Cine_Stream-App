@@ -41,6 +41,7 @@
       "package": "com.cinestream.tayyabali77865",
       "newArchEnabled": true,
       "jsEngine": "hermes",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#000000"
