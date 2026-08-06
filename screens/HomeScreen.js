@@ -701,7 +701,7 @@ export default function HomeScreen({ navigation }) {
       } catch (e) {
         setSuggestions([]);
       }
-    }, 500);
+    }, 350);
 
     return () => clearTimeout(delayDebounceFn);
     // eslint-disable-next-line react-hooks/exhaustive-deps
