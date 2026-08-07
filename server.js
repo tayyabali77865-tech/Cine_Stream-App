@@ -598,6 +598,7 @@ app.all('/api/stream/:id', async (req, res) => {
   const lang = req.query.lang || 'Hindi';
   const clientIp = req.headers['x-forwarded-for'] || req.ip;
 
+  try {
     // A. Intercept if user has custom overridden URLs (Always check before cache so overrides apply instantly)
     const customLinks = await db.getOverride(String(id));
     if (customLinks && customLinks.length > 0) {
