@@ -55,6 +55,7 @@ const detailsCache = new LRUCacheWithSWR({
   capacity: parseInt(process.env.CACHE_DETAILS_CAPACITY || '500'),
   ttlMs: parseInt(process.env.CACHE_DETAILS_TTL_MS || '300000'),
   swrMs: parseInt(process.env.CACHE_DETAILS_SWR_MS || '900000'),
+  allowFallbackOnError: false,
   fetchFn: async (key) => {
     return fetchFromNetmirrorWithRetry(key);
   }

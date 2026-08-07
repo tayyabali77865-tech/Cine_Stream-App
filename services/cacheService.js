@@ -253,11 +253,12 @@ class RequestDeduplicator {
 }
 
 class LRUCacheWithSWR {
-  constructor({ capacity, ttlMs, swrMs, fetchFn }) {
+  constructor({ capacity, ttlMs, swrMs, fetchFn, allowFallbackOnError = true }) {
     this.capacity = capacity;
     this.ttlMs = ttlMs;
     this.swrMs = swrMs;
     this.fetchFn = fetchFn;
+    this.allowFallbackOnError = allowFallbackOnError;
     this.cache = new Map();
     this.hits = 0;
     this.misses = 0;
@@ -312,7 +313,7 @@ class LRUCacheWithSWR {
       }
       return { value: newValue, status: 'MISS' };
     } catch (err) {
-      if (entry) {
+      if (entry && this.allowFallbackOnError !== false) {
         console.warn(`[Cache] Fetch failed for ${key}, falling back to expired/stale cache entry.`);
         return { value: entry.value, status: 'FALLBACK_HIT' };
       }
