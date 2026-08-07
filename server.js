@@ -643,7 +643,10 @@ app.all('/api/stream/:id', async (req, res) => {
     let targetId = id;
 
     // alternate language handling
-    if (lang !== 'Hindi') {
+    const titleLower = (item.title || '').toLowerCase();
+    const isLangAlreadyInTitle = titleLower.includes(`[${lang.toLowerCase()}]`);
+
+    if (lang !== 'Hindi' && !isLangAlreadyInTitle) {
       const baseTitle = item.title.replace(/\[.*?\]/g, '').trim();
       console.log(`🔍 Searching for alternate dub of "${baseTitle}" in ${lang}...`);
       const searchUrl = `/search2/${encodeURIComponent(baseTitle)}?page=0`;
