@@ -567,6 +567,27 @@ app.get('/api/details/:id', async (req, res) => {
   }
 });
 
+function isUrlExpired(url) {
+  if (!url || typeof url !== 'string') return true;
+  try {
+    const parsed = new URL(url);
+    const expiresParam = parsed.searchParams.get('Expires') || parsed.searchParams.get('expires') || parsed.searchParams.get('expiry') || parsed.searchParams.get('exp');
+    if (expiresParam) {
+      const expiresVal = parseInt(expiresParam, 10);
+      if (!isNaN(expiresVal)) {
+        const expiresMs = expiresVal < 10000000000 ? expiresVal * 1000 : expiresVal;
+        if (Date.now() + 30000 > expiresMs) {
+          console.log(`⚠️ URL check: Link has expired (Expiry: ${new Date(expiresMs).toISOString()}, Current: ${new Date().toISOString()})`);
+          return true;
+        }
+      }
+    }
+  } catch (e) {
+    // Ignore invalid URL
+  }
+  return false;
+}
+
 /**
  * 4. Advanced Stream Resolver
  */
@@ -666,6 +687,9 @@ app.all('/api/stream/:id', async (req, res) => {
           const decodedUrl = Buffer.from(urlParamMatch[1], 'base64').toString('ascii');
           const videoUrl = await extractDirectVideoLink(decodedUrl);
           if (videoUrl) {
+            if (isUrlExpired(videoUrl)) {
+              throw new Error('Embed resolved link is expired');
+            }
             let sizeLabel = 'N/A';
             if (sParamMatch) {
               try { sizeLabel = Buffer.from(sParamMatch[1], 'base64').toString('ascii').trim(); } catch (_) { }
@@ -692,7 +716,12 @@ app.all('/api/stream/:id', async (req, res) => {
         const titleClean = item.title ? item.title.trim() : 'Video';
         const na = Buffer.from(titleClean).toString('base64');
         const res = await resolveWatchboxStream(targetId, targetSe, targetEp, dp, na, clientIp);
-        if (res && res.videoUrl) return res;
+        if (res && res.videoUrl) {
+          if (isUrlExpired(res.videoUrl)) {
+            throw new Error('Watchbox resolved link is expired');
+          }
+          return res;
+        }
         throw new Error('Watchbox resolution failed');
       })());
     }
@@ -704,6 +733,9 @@ app.all('/api/stream/:id', async (req, res) => {
         if (embedItem) {
           const res = await resolveEmbedJsonStream(embedItem, clientIp);
           if (res && res.videoUrl) {
+            if (isUrlExpired(res.videoUrl)) {
+              throw new Error('EmbedJSON resolved link is expired');
+            }
             let qList = res.qualities || [];
             if (qList.length === 0) {
               const qualityMatch = (embedItem.name + res.videoUrl).match(/(\d{3,4}p)/i);
@@ -803,8 +835,14 @@ app.all('/api/stream/:id', async (req, res) => {
 
 
               if (resolvedVideoUrl) {
-                console.log(`🔥 Recovery SUCCESS! Using stream from alternate ID ${altItem.id}`);
-                break;
+                if (isUrlExpired(resolvedVideoUrl)) {
+                  console.log(`⚠️ Alternate ID resolved link was expired. Discarding.`);
+                  resolvedVideoUrl = null;
+                  resolvedQualities = [];
+                } else {
+                  console.log(`🔥 Recovery SUCCESS! Using stream from alternate ID ${altItem.id}`);
+                  break;
+                }
               }
             }
           } catch (altErr) {
