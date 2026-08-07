@@ -598,19 +598,7 @@ app.all('/api/stream/:id', async (req, res) => {
   const lang = req.query.lang || 'Hindi';
   const clientIp = req.headers['x-forwarded-for'] || req.ip;
 
-  try {
-    const cacheKey = `${id}:${se}:${ep}:${lang}`;
-
-    // ✅ Check streamCache first — avoid re-resolving for same stream if cache is enabled
-    const cacheTtl = parseInt(process.env.CACHE_STREAM_TTL_MS || '0');
-    const cachedEntry = streamCache.cache.get(cacheKey);
-    if (cacheTtl > 0 && cachedEntry && (Date.now() - cachedEntry.fetchedAt) < cacheTtl) {
-      console.log(`⚡ [StreamCache] HIT for key: ${cacheKey}`);
-      res.setHeader('X-Cache-Status', 'HIT');
-      return res.json(cachedEntry.value);
-    }
-
-    // A. Intercept if user has custom overridden URLs
+    // A. Intercept if user has custom overridden URLs (Always check before cache so overrides apply instantly)
     const customLinks = await db.getOverride(String(id));
     if (customLinks && customLinks.length > 0) {
       console.log(`🎯 Serving custom URL overrides config for ID: ${id}`);
@@ -620,6 +608,17 @@ app.all('/api/stream/:id', async (req, res) => {
         audioUrl: null,
         referer: null
       });
+    }
+
+    const cacheKey = `${id}:${se}:${ep}:${lang}`;
+
+    // ✅ Check streamCache first — avoid re-resolving for same stream if cache is enabled
+    const cacheTtl = parseInt(process.env.CACHE_STREAM_TTL_MS || '0');
+    const cachedEntry = streamCache.cache.get(cacheKey);
+    if (cacheTtl > 0 && cachedEntry && (Date.now() - cachedEntry.fetchedAt) < cacheTtl) {
+      console.log(`⚡ [StreamCache] HIT for key: ${cacheKey}`);
+      res.setHeader('X-Cache-Status', 'HIT');
+      return res.json(cachedEntry.value);
     }
 
     let item = null;
