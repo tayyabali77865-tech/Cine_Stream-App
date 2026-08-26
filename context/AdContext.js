@@ -22,7 +22,7 @@ const AD_CONFIG_URLS = [
   process.env.EXPO_PUBLIC_API_BASE_URL
     ? `${process.env.EXPO_PUBLIC_API_BASE_URL.replace(/\/+$/, '')}/api/ad-config`
     : null,
-  'https://cinestream-app-production-68d6.up.railway.app/api/ad-config',
+  'https://cinestream-app-production-640b.up.railway.app/api/ad-config',
 ].filter(Boolean);
 
 async function fetchAdConfig() {
