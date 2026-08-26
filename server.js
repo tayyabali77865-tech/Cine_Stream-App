@@ -1489,6 +1489,11 @@ app.post('/api/app-config', async (req, res) => {
   }
 });
 
+// ─── Serve Admin Panel ──────────────────────────────────────────────────────────
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'netmirror_home.html'));
+});
+
 // ─── Start Server ─────────────────────────────────────────────────────────────
 
 app.listen(PORT, '0.0.0.0', async () => {
