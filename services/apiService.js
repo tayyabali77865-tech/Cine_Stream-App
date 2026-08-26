@@ -5,10 +5,10 @@ import CryptoJS from 'crypto-js';
 
 const debuggerHost = Constants.expoConfig?.hostUri || '';
 const hostIP = debuggerHost.split(':')[0] || 'localhost';
-const deployedApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || '';
 
-// Pre-initialize secret key once — avoids repeated env lookup per call
-const secretKey = process.env.EXPO_PUBLIC_API_KEY || 'cinestream_secret_secure_key_2026';
+// 🚀 HARDCODED to prevent EAS Dashboard secrets from injecting old/wrong values
+const deployedApiBaseUrl = 'https://cinestream-app-production-640b.up.railway.app';
+const secretKey = 'cinestream_secret_secure_key_2026';
 
 const normalizeBaseUrl = (value) => {
   if (!value) return '';
@@ -29,13 +29,14 @@ export const getCachedImageUri = (url) => {
     targetUrl = 'https:' + url;
   }
 
-  // Adjust TMDB sizes dynamically to w300 to reduce bandwidth
+  // Adjust TMDB sizes dynamically to w300 to reduce bandwidth before proxying
   if (targetUrl.includes('image.tmdb.org/t/p/')) {
     targetUrl = targetUrl.replace(/\/t\/p\/[a-zA-Z0-9_-]+\//, '/t/p/w300/');
   }
 
-  // Return the original URL directly, weserv.nl is often blocked by source CDNs causing posters to not load
-  return targetUrl;
+  // For all domains, use a global CDN proxy (wsrv.nl) to cache, resize and convert to webp
+  const encodedUrl = encodeURIComponent(targetUrl);
+  return `https://wsrv.nl/?url=${encodedUrl}&w=300&output=webp`;
 };
 
 const API_FALLBACKS = [

@@ -164,52 +164,9 @@ function makeUnique(list, isSearch = false) {
 }
 
 function applyClientSideFilter(list, filterName, categoryName) {
-  let filtered = list;
-
-  if (categoryName !== 'All') {
-    filtered = filtered.filter(item => {
-      const typeLower = (item.type || '').toLowerCase();
-      const titleLower = item.title.toLowerCase();
-
-      if (categoryName === 'Movies') {
-        return typeLower === 'movie' || typeLower === 'movie/';
-      }
-      if (categoryName === 'Series') {
-        return typeLower === 'tv show' || typeLower === 'tv' || typeLower === 'series';
-      }
-      if (categoryName === 'Anime') {
-        return true;
-      }
-      return true;
-    });
-  }
-
-  if (filterName !== 'Latest' && filterName !== 'Trending') {
-    filtered = filtered.filter(item => {
-      const titleLower = item.title.toLowerCase();
-      const langLower = (item.language || '').toLowerCase();
-
-      // Language and Regional filters are already filtered on the server, so we trust server results
-      if (filterName === 'Hindi' || filterName === 'English' || filterName === 'Bollywood' || filterName === 'Hollywood' || filterName === 'Korean' || filterName === 'Chinese') {
-        return true;
-      }
-
-      // South Indian regional filter
-      if (filterName === 'South Indian') {
-        return titleLower.includes('tamil') ||
-          titleLower.includes('telugu') ||
-          titleLower.includes('malayalam') ||
-          titleLower.includes('kannada') ||
-          langLower.includes('tamil') ||
-          langLower.includes('telugu') ||
-          langLower.includes('malayalam') ||
-          langLower.includes('kannada');
-      }
-      return true;
-    });
-  }
-
-  return filtered;
+  // Backend now handles all category and language filtering efficiently.
+  // We only return the list as-is to prevent the slow while-loop sequential fetching.
+  return list;
 }
 
 /**

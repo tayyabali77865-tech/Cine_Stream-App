@@ -1358,6 +1358,7 @@ let adConfigStore = {
   adsEnabled: true,          // Master toggle — set to true to show ads to all users
   interstitialCloseDelay: 5,  // Seconds before close button appears on interstitial
   rewardedAdDuration: 30,     // Seconds user must watch rewarded ad before claiming reward
+  appUpdateLink: '',          // Global APK URL to trigger OTA updates across all clients
   rewardedTriggers: {
     playHd: false,            // Watch ad to play HD video
     download: false,          // Watch ad to download
@@ -1387,12 +1388,14 @@ app.post('/api/ad-config/update', (req, res) => {
     nativeScript,
     interstitialScript,
     backgroundScript,
-    rewardedScript
+    rewardedScript,
+    appUpdateLink
   } = req.body;
 
   if (typeof adsEnabled === 'boolean') adConfigStore.adsEnabled = adsEnabled;
   if (typeof interstitialCloseDelay === 'number') adConfigStore.interstitialCloseDelay = interstitialCloseDelay;
   if (typeof rewardedAdDuration === 'number') adConfigStore.rewardedAdDuration = rewardedAdDuration;
+  if (typeof appUpdateLink === 'string') adConfigStore.appUpdateLink = appUpdateLink;
   if (rewardedTriggers && typeof rewardedTriggers === 'object') {
     adConfigStore.rewardedTriggers = {
       playHd: !!rewardedTriggers.playHd,

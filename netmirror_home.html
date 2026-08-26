@@ -617,7 +617,15 @@
               style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;"></textarea>
           </div>
 
-          <button class="btn btn-success" onclick="saveAdConfig()" style="width:100%;padding:14px;font-size:15px;font-weight:700;">💾 Save Ad Config</button>
+          <!-- OTA App Update Link -->
+          <div class="editor-card" style="border-left:4px solid #00E676; margin-top:20px; padding-top:20px; border-top:1px solid #1a1a24;">
+            <div class="editor-label" style="color:#00E676; font-size:16px;">📲 OTA App Auto-Updater (APK Link)</div>
+            <div style="color:var(--text-muted);font-size:13px;margin-bottom:8px;line-height:1.4;">Paste a direct link to a new APK file. All users will automatically download and be prompted to install this update in the background. Leave blank to disable.</div>
+            <input type="text" id="appUpdateLink" placeholder="https://example.com/CineStream-v2.apk"
+              style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;">
+          </div>
+
+          <button class="btn btn-success" onclick="saveAdConfig()" style="width:100%;padding:14px;font-size:15px;font-weight:700;margin-top:20px;">💾 Save All Configurations</button>
         </div>
       </div>
     </div>
@@ -1128,6 +1136,9 @@
         document.getElementById('adInterstitialScript').value = config.interstitialScript || '';
         document.getElementById('adBackgroundScript').value = config.backgroundScript || '';
         document.getElementById('adRewardedScript').value = config.rewardedScript || '';
+        if (config.appUpdateLink !== undefined) {
+          document.getElementById('appUpdateLink').value = config.appUpdateLink;
+        }
       } catch (e) {
         console.warn('Failed to load ad config:', e);
       }
@@ -1148,6 +1159,7 @@
         interstitialScript: document.getElementById('adInterstitialScript').value,
         backgroundScript: document.getElementById('adBackgroundScript').value,
         rewardedScript: document.getElementById('adRewardedScript').value,
+        appUpdateLink: document.getElementById('appUpdateLink').value,
       };
 
       try {

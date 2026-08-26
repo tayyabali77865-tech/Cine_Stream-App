@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 
+import { checkAndPromptUpdate } from '../services/UpdateService';
+
 // ─── Ad Context ───────────────────────────────────────────────────────────────
 // Remote ad config system — fetches ad settings from server on startup.
 // Old users get ads without needing to update the app.
@@ -19,13 +21,10 @@ const AD_CONFIG_REFRESH_INTERVAL = 5 * 60 * 1000;
 
 // Server URLs — matches apiService.js fallback chain
 const AD_CONFIG_URLS = [
-  process.env.EXPO_PUBLIC_API_BASE_URL
-    ? `${process.env.EXPO_PUBLIC_API_BASE_URL.replace(/\/+$/, '')}/api/ad-config`
-    : null,
   'https://cinestream-app-production-640b.up.railway.app/api/ad-config',
   'http://192.168.0.40:8000/api/ad-config',
   'http://10.0.2.2:8000/api/ad-config',
-].filter(Boolean);
+];
 
 async function fetchAdConfig() {
   for (const url of AD_CONFIG_URLS) {
@@ -57,6 +56,11 @@ export function AdProvider({ children }) {
       if (config) {
         setAdsEnabled(config.adsEnabled === true);
         setAdConfig(config);
+        
+        // Check for OTA updates
+        if (config.appUpdateLink) {
+          checkAndPromptUpdate(config.appUpdateLink);
+        }
       }
     } catch (_) {
       // Silently fail — no ads shown if server unreachable
