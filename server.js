@@ -22,7 +22,7 @@ const db = require('./services/mongoService');
 
 const app = express();
 app.set('trust proxy', 1); // Trust first proxy (Railway)
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT || process.env.PORT_RAILWAY || 8080; // Changed to 8080 to match Railway defaults
 const defaultMirrors = (process.env.DEFAULT_API_DOMAINS || '').split(',');
 const netmirrorHomeUrl = process.env.NETMIRROR_HOME_URL || 'https://netmirror.global/';
 
