@@ -32,33 +32,15 @@ const reportedErrorSchema = new mongoose.Schema({
   reportedAt: { type: String, default: () => new Date().toISOString() }
 });
 
-const appConfigSchema = new mongoose.Schema({
-  configId:          { type: String, required: true, unique: true, default: 'main' },
-  latestVersionCode: { type: Number, default: 1 },
-  latestVersionName: { type: String, default: '1.0.0' },
-  apkDownloadUrl:    { type: String, default: '' },
-  forceUpdate:       { type: Boolean, default: true },
-  releaseNotes:      { type: String, default: 'Bug fixes and performance improvements.' },
-  updatedAt:         { type: String, default: () => new Date().toISOString() }
-});
-
 const DeletedMedia   = mongoose.model('DeletedMedia',   deletedMediaSchema);
 const CustomOverride = mongoose.model('CustomOverride', customOverrideSchema);
 const ReportedError  = mongoose.model('ReportedError',  reportedErrorSchema);
-const AppConfig      = mongoose.model('AppConfig',      appConfigSchema);
 
 // ─── In-Memory Fallback (if MongoDB is offline) ───────────────────────────────
 
 let fallbackDeletedIds  = [];
 let fallbackOverrides   = {};
 let fallbackReportedErrors = {};
-let fallbackAppConfig   = {
-  latestVersionCode: 1,
-  latestVersionName: '1.0.0',
-  apkDownloadUrl: '',
-  forceUpdate: true,
-  releaseNotes: ''
-};
 let isConnected         = false;
 
 // ─── Connection ───────────────────────────────────────────────────────────────
@@ -304,43 +286,6 @@ async function batchGetOverrides(ids) {
   }
 }
 
-// ─── App Config ───────────────────────────────────────────────────────────────
-
-async function getAppConfig() {
-  if (!isConnected) {
-    return fallbackAppConfig;
-  }
-  try {
-    let config = await AppConfig.findOne({ configId: 'main' }).lean();
-    if (!config) {
-      // Create default if not exists
-      config = await AppConfig.create({ configId: 'main' });
-    }
-    return config;
-  } catch (err) {
-    console.error('[MongoDB] getAppConfig error:', err.message);
-    return fallbackAppConfig;
-  }
-}
-
-async function updateAppConfig(data) {
-  if (!isConnected) {
-    fallbackAppConfig = { ...fallbackAppConfig, ...data };
-    return fallbackAppConfig;
-  }
-  try {
-    const config = await AppConfig.findOneAndUpdate(
-      { configId: 'main' },
-      { $set: { ...data, updatedAt: new Date().toISOString() } },
-      { new: true, upsert: true }
-    ).lean();
-    return config;
-  } catch (err) {
-    console.error('[MongoDB] updateAppConfig error:', err.message);
-    throw err;
-  }
-}
-
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -357,7 +302,5 @@ module.exports = {
   removeReportedError,
   getAllReportedErrors,
   batchGetDeleted,
-  batchGetOverrides,
-  getAppConfig,
-  updateAppConfig
+  batchGetOverrides
 };

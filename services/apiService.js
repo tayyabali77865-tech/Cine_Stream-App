@@ -195,11 +195,16 @@ async function customFetch(endpoint, options = {}) {
   if (!isUrlOnCooldown(activeBaseUrl)) {
     try {
       const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 15000);
-      // ✅ Any HTTP response (even 4xx/5xx) means server is reachable — return it
-      // Only network-level errors (throws) should mark URL as failed
+      
+      // If server returns Gateway Error (502/503/504), consider it offline/dead and force fallback
+      if ([502, 503, 504].includes(response.status)) {
+        throw new Error(`Server returned ${response.status} Bad Gateway/Unavailable`);
+      }
+      
+      // ✅ Any other HTTP response (200, 401, 403, 500) means server is reachable
       return response;
     } catch (err) {
-      // Network/timeout error → server unreachable → mark as failed
+      // Network/timeout/502 error → server unreachable → mark as failed
       markUrlFailed(activeBaseUrl);
       console.log(`⚠️ ${activeBaseUrl} failed: ${err.message}`);
     }
@@ -229,7 +234,12 @@ async function customFetch(endpoint, options = {}) {
       activeBaseUrl = workingUrl;
       console.log(`🎯 Switched to: ${activeBaseUrl}`);
       const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 15000);
-      // ✅ Return any HTTP response — caller handles status codes
+      
+      if ([502, 503, 504].includes(response.status)) {
+        throw new Error(`Server returned ${response.status} Bad Gateway/Unavailable`);
+      }
+      
+      // ✅ Return any other HTTP response
       return response;
     } catch (_) {
       // All failed at network level
@@ -257,7 +267,11 @@ export const apiService = {
       const response = await customFetch(
         `/trending?page=${page}&filter=${encodeURIComponent(filter)}&category=${encodeURIComponent(category)}`
       );
-      if (!response.ok) throw new Error('Backend failed to load trending list.');
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Backend failed: ${response.status} - ${errorText}`);
+        throw new Error('Backend failed to load trending list.');
+      }
       const data = await response.json();
       trendingCache.set(cacheKey, data);
       return data;
