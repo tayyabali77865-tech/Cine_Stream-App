@@ -1,3 +1,6 @@
+[variables]
+  PORT = "8080"
+
 [build]
   command = "npm install"
 
