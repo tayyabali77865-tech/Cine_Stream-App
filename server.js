@@ -144,6 +144,11 @@ app.use((req, res, next) => {
     return next();
   }
 
+  // Exempt app-config endpoint for GET requests so app can fetch it freely
+  if (urlClean === '/api/app-config' && req.method === 'GET') {
+    return next();
+  }
+
   const signature = req.headers['x-signature'];
   const timestamp = req.headers['x-timestamp'];
 
@@ -1371,7 +1376,7 @@ let adConfigStore = {
   updatedAt: null
 };
 
-// Public endpoint — no HMAC required (old app versions can access)
+// ─── Ad Config ────────────────────────────────────────────────────────────────
 app.get('/api/ad-config', (req, res) => {
   res.json(adConfigStore);
 });
@@ -1452,6 +1457,40 @@ setInterval(() => {
 }, 60000);
 
 // Server Listen
+// ─── App Update Config ────────────────────────────────────────────────────────
+app.get('/api/app-config', async (req, res) => {
+  try {
+    const config = await db.getAppConfig();
+    res.json(config);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch app config' });
+  }
+});
+
+// Protected POST endpoint for the admin panel to update the APK link
+app.post('/api/app-config', async (req, res) => {
+  // Simple check for an admin key
+  const adminKey = req.headers['x-admin-key'];
+  if (adminKey !== (process.env.API_KEY || 'cinestream_secret_secure_key_2026')) {
+     return res.status(403).json({ error: 'Invalid admin key' });
+  }
+  
+  try {
+    const updatedConfig = await db.updateAppConfig({
+      latestVersionCode: req.body.latestVersionCode,
+      latestVersionName: req.body.latestVersionName,
+      apkDownloadUrl: req.body.apkDownloadUrl,
+      forceUpdate: req.body.forceUpdate !== undefined ? req.body.forceUpdate : true,
+      releaseNotes: req.body.releaseNotes
+    });
+    res.json({ success: true, config: updatedConfig });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update app config' });
+  }
+});
+
+// ─── Start Server ─────────────────────────────────────────────────────────────
+
 app.listen(PORT, '0.0.0.0', async () => {
   console.log(`\n🚀 Production Scraper Server active on http://0.0.0.0:${PORT}/api`);
 

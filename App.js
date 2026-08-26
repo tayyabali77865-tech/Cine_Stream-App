@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, StatusBar, Animated, ActivityIndicator, Image } from 'react-native';
+import { StyleSheet, Text, View, StatusBar, Animated, ActivityIndicator, Image, Appearance } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { enableScreens } from 'react-native-screens';
@@ -10,6 +10,10 @@ import PlayerScreen from './screens/PlayerScreen';
 import ViewAllScreen from './screens/ViewAllScreen';
 import { BackgroundAdHandler } from './components/AdBanner';
 import { AdProvider } from './context/AdContext';
+import AppUpdateModal from './components/AppUpdateModal';
+
+// Force dark mode
+Appearance.setColorScheme('dark');
 
 // Enable native screen containers
 enableScreens(true);
@@ -102,6 +106,7 @@ export default function App() {
               />
             </Stack.Navigator>
           </NavigationContainer>
+          <AppUpdateModal />
           <BackgroundAdHandler />
         </>
       )}
