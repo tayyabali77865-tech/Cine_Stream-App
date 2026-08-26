@@ -594,7 +594,6 @@ export default function PlayerScreen({ route, navigation }) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#E50914" />
-        <Text style={styles.statusText}>Loading stream…</Text>
       </View>
     );
   }

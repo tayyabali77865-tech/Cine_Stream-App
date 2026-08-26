@@ -29,12 +29,13 @@ export const getCachedImageUri = (url) => {
     targetUrl = 'https:' + url;
   }
 
-  // Adjust TMDB sizes dynamically to w300 to reduce bandwidth before proxying
+  // Adjust TMDB sizes dynamically to w300 to reduce bandwidth
   if (targetUrl.includes('image.tmdb.org/t/p/')) {
     targetUrl = targetUrl.replace(/\/t\/p\/[a-zA-Z0-9_-]+\//, '/t/p/w300/');
+    return targetUrl; // TMDB is fast enough and might block proxies, direct load
   }
 
-  // For all domains, use a global CDN proxy (wsrv.nl) to cache, resize and convert to webp
+  // For other slow domains, use a global CDN proxy (wsrv.nl) to cache, resize and convert to webp
   const encodedUrl = encodeURIComponent(targetUrl);
   return `https://wsrv.nl/?url=${encodedUrl}&w=300&output=webp`;
 };

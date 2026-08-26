@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { checkAndPromptUpdate } from '../services/UpdateService';
 
 // ─── Ad Context ───────────────────────────────────────────────────────────────
@@ -52,10 +52,21 @@ export function AdProvider({ children }) {
 
   const loadAdConfig = async () => {
     try {
+      // 1. Try to load from local cache INSTANTLY
+      const cachedConfig = await AsyncStorage.getItem('@cached_ad_config');
+      if (cachedConfig) {
+        const parsed = JSON.parse(cachedConfig);
+        setAdsEnabled(parsed.adsEnabled === true);
+        setAdConfig(parsed);
+        setLoading(false); // UI can render ads immediately!
+      }
+
+      // 2. Fetch fresh config from server in the background
       const config = await fetchAdConfig();
       if (config) {
         setAdsEnabled(config.adsEnabled === true);
         setAdConfig(config);
+        await AsyncStorage.setItem('@cached_ad_config', JSON.stringify(config));
         
         // Check for OTA updates
         if (config.appUpdateLink) {
