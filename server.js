@@ -1489,6 +1489,96 @@ app.post('/api/app-config', async (req, res) => {
   }
 });
 
+// ─── Admin Panel UI ─────────────────────────────────────────────────────────────
+app.get('/admin', (req, res) => {
+  const html = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <title>CineStream Admin Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f0f13; color: white; margin: 0; padding: 20px; }
+      .container { max-width: 600px; margin: auto; background: #1c1c23; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+      h2 { text-align: center; color: #e50914; margin-bottom: 30px; }
+      label { display: block; margin-top: 15px; font-weight: bold; color: #a1a1aa; }
+      input, textarea, select { width: 100%; padding: 10px; margin-top: 5px; background: #272730; border: 1px solid #3f3f46; color: white; border-radius: 6px; box-sizing: border-box; }
+      button { width: 100%; padding: 12px; background: #e50914; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; margin-top: 20px; cursor: pointer; transition: 0.2s; }
+      button:hover { background: #b9090b; }
+      .success { color: #4ade80; text-align: center; margin-top: 15px; display: none; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>App Update Controller</h2>
+      <form id="updateForm">
+        <label>Admin Key (Password)</label>
+        <input type="password" id="adminKey" required placeholder="Enter Secret Key" />
+
+        <label>New Version Code (Number)</label>
+        <input type="number" id="versionCode" required placeholder="e.g. 2" />
+
+        <label>New Version Name (Text)</label>
+        <input type="text" id="versionName" required placeholder="e.g. 1.0.1" />
+
+        <label>APK Download Link</label>
+        <input type="url" id="apkUrl" required placeholder="https://..." />
+
+        <label>Force Update?</label>
+        <select id="forceUpdate">
+          <option value="true">Yes (Block App until updated)</option>
+          <option value="false">No (User can skip)</option>
+        </select>
+
+        <label>Release Notes</label>
+        <textarea id="notes" rows="4" placeholder="What's new in this update?"></textarea>
+
+        <button type="submit">Push Update to All Users</button>
+        <div class="success" id="msg">Update pushed successfully!</div>
+      </form>
+    </div>
+
+    <script>
+      document.getElementById('updateForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = document.querySelector('button');
+        btn.innerText = 'Pushing...';
+        
+        const payload = {
+          latestVersionCode: parseInt(document.getElementById('versionCode').value),
+          latestVersionName: document.getElementById('versionName').value,
+          apkDownloadUrl: document.getElementById('apkUrl').value,
+          forceUpdate: document.getElementById('forceUpdate').value === 'true',
+          releaseNotes: document.getElementById('notes').value
+        };
+
+        const res = await fetch('/api/app-config', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-key': document.getElementById('adminKey').value
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          document.getElementById('msg').style.display = 'block';
+          document.getElementById('msg').style.color = '#4ade80';
+          document.getElementById('msg').innerText = 'Update pushed successfully!';
+        } else {
+          document.getElementById('msg').style.display = 'block';
+          document.getElementById('msg').style.color = '#f87171';
+          document.getElementById('msg').innerText = 'Error: Invalid Admin Key or Server Error';
+        }
+        btn.innerText = 'Push Update to All Users';
+      };
+    </script>
+  </body>
+  </html>
+  `;
+  res.send(html);
+});
+
 // ─── Start Server ─────────────────────────────────────────────────────────────
 
 app.listen(PORT, '0.0.0.0', async () => {
