@@ -1419,6 +1419,11 @@ app.get('/api/mirrors', (req, res) => {
   });
 });
 
+// Root endpoint for Railway health checks and browser testing
+app.get('/', (req, res) => {
+  res.json({ status: 'CineStream Backend is Running!', version: '1.0.0' });
+});
+
 // Telemetry & Health endpoint
 app.get('/api/health', async (req, res) => {
   const uptime = Math.floor(process.uptime());
