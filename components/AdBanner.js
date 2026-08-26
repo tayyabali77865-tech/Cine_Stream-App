@@ -26,6 +26,13 @@ function buildAdHtml(adScript) {
   `;
 }
 
+// ─── Shared Loading Component for Ads ──────────────────────────────────────────
+const AdLoading = () => (
+  <View style={styles.adLoadingContainer}>
+    <Text style={styles.adLoadingText}>Sponsored</Text>
+  </View>
+);
+
 // ─── Banner Ad Component (300x250 or custom size) ─────────────────────────────
 export function AdBanner300x250() {
   const { adsEnabled, adConfig } = useAds();
@@ -40,12 +47,13 @@ export function AdBanner300x250() {
         scrollEnabled={false}
         javaScriptEnabled={true}
         domStorageEnabled={true}
-        databaseEnabled={true}
         cacheEnabled={true}
         cacheMode="LOAD_CACHE_ELSE_NETWORK"
         mixedContentMode="always"
         allowsInlineMediaPlayback={true}
         mediaPlaybackRequiresUserAction={false}
+        startInLoadingState={true}
+        renderLoading={() => <AdLoading />}
         onError={() => {}}
       />
     </View>
@@ -66,10 +74,11 @@ export function AdBanner728x90() {
         scrollEnabled={false}
         javaScriptEnabled={true}
         domStorageEnabled={true}
-        databaseEnabled={true}
         cacheEnabled={true}
         cacheMode="LOAD_CACHE_ELSE_NETWORK"
         mixedContentMode="always"
+        startInLoadingState={true}
+        renderLoading={() => <AdLoading />}
         onError={() => {}}
       />
     </View>
@@ -290,6 +299,26 @@ export function RewardedAd({ visible, rewardLabel, onRewarded, onClose }) {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+  adLoadingContainer: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#1C1C23',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2D2D3A',
+  },
+  adLoadingText: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
   bannerContainer: {
     width: '100%',
     alignItems: 'center',

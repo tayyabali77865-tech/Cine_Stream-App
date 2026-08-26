@@ -7,6 +7,7 @@ import { enableScreens } from 'react-native-screens';
 import HomeScreen from './screens/HomeScreen';
 import DetailsScreen from './screens/DetailsScreen';
 import PlayerScreen from './screens/PlayerScreen';
+import ViewAllScreen from './screens/ViewAllScreen';
 import { BackgroundAdHandler } from './components/AdBanner';
 import { AdProvider } from './context/AdContext';
 
@@ -54,51 +55,56 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [fadeAnim]);
 
-  if (showSplash) {
-    return (
-      <View style={styles.splashContainer}>
-        <StatusBar barStyle="light-content" backgroundColor="#09090C" />
-        <Animated.View style={{ opacity: fadeAnim, alignItems: 'center' }}>
-          <Image
-            source={require('./assets/icon.png')}
-            style={styles.splashLogo}
-            resizeMode="contain"
-          />
-          <Text style={styles.appTitle}>
-            <Text style={{ color: '#E50914' }}>Cine</Text>Stream
-          </Text>
-          <Text style={styles.madeByText}>Made By Tayyab</Text>
-          <ActivityIndicator size="small" color="#E50914" style={{ marginTop: 24 }} />
-        </Animated.View>
-      </View>
-    );
-  }
-
   return (
     <AdProvider>
-      <NavigationContainer>
-        <Stack.Navigator
-          initialRouteName="Home"
-          screenOptions={NAVIGATOR_SCREEN_OPTIONS}
-        >
-          <Stack.Screen
-            name="Home"
-            component={HomeScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="Details"
-            component={DetailsScreen}
-            options={{ title: 'Media Info' }}
-          />
-          <Stack.Screen
-            name="Player"
-            component={PlayerScreen}
-            options={{ headerShown: false }}
-          />
-        </Stack.Navigator>
-      </NavigationContainer>
-      <BackgroundAdHandler />
+      {showSplash ? (
+        <View style={styles.splashContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#09090C" />
+          <Animated.View style={{ opacity: fadeAnim, alignItems: 'center' }}>
+            <Image
+              source={require('./assets/icon.png')}
+              style={styles.splashLogo}
+              resizeMode="contain"
+            />
+            <Text style={styles.appTitle}>
+              <Text style={{ color: '#E50914' }}>Cine</Text>Stream
+            </Text>
+            <Text style={styles.madeByText}>Made By Tayyab</Text>
+            <ActivityIndicator size="small" color="#E50914" style={{ marginTop: 24 }} />
+          </Animated.View>
+        </View>
+      ) : (
+        <>
+          <NavigationContainer>
+            <Stack.Navigator
+              initialRouteName="Home"
+              screenOptions={NAVIGATOR_SCREEN_OPTIONS}
+            >
+              <Stack.Screen
+                name="Home"
+                component={HomeScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="Details"
+                component={DetailsScreen}
+                options={{ title: 'Media Info' }}
+              />
+              <Stack.Screen
+                name="Player"
+                component={PlayerScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="ViewAll"
+                component={ViewAllScreen}
+                options={{ headerShown: false }}
+              />
+            </Stack.Navigator>
+          </NavigationContainer>
+          <BackgroundAdHandler />
+        </>
+      )}
     </AdProvider>
   );
 }

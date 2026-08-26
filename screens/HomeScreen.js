@@ -14,7 +14,8 @@ import {
   LayoutAnimation,
   UIManager,
   Platform,
-  Alert
+  Alert,
+  Keyboard
 } from 'react-native';
 
 if (Platform.OS === 'android') {
@@ -26,6 +27,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { apiService, getCachedImageUri } from '../services/apiService';
 import { Ionicons } from '@expo/vector-icons';
 import { AdBanner728x90 } from '../components/AdBanner';
+import HomeSection from '../components/HomeSection';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -36,6 +38,14 @@ const COLUMN_WIDTH = (width - 48) / 2;
 const CARD_POSTER_HEIGHT = Math.round(COLUMN_WIDTH * 1.5);
 const CARD_TITLE_HEIGHT = 8 + 14 + 4; // marginTop + fontSize + paddingH
 const CARD_TOTAL_HEIGHT = CARD_POSTER_HEIGHT + CARD_TITLE_HEIGHT + 20; // +marginBottom
+
+// Smart helper to remove "in hindi", "hindi dubbed" etc from the search query 
+// so the backend can find the core title, and our client-side sorting handles the rest.
+function cleanSearchQuery(query) {
+  const cleaned = query.replace(/\s+in\s+hindi|\s+hindi\s+dubbed|\s+hindi/gi, '').trim();
+  // If the query was purely "hindi", don't return an empty string
+  return cleaned || query.trim();
+}
 
 // Skeleton dummy items — module-level constant, never re-created
 const SKELETON_DATA = Array.from({ length: 6 }, (_, i) => ({ id: `skeleton-${i}` }));
@@ -250,16 +260,21 @@ function getStringSimilarity(title, query) {
 function sortMediaList(list, isSearchActive, queryOrFilter) {
   if (isSearchActive && queryOrFilter) {
     return [...list].sort((a, b) => {
-      const simA = getStringSimilarity(a.title, queryOrFilter);
-      const simB = getStringSimilarity(b.title, queryOrFilter);
+      // 1. Hindi priority
+      const aHindi = a.title.toLowerCase().includes('hindi');
+      const bHindi = b.title.toLowerCase().includes('hindi');
+      if (aHindi && !bHindi) return -1;
+      if (!aHindi && bHindi) return 1;
 
-      // Descending order of similarity (100% match, then 99%, then 98% etc.)
-      if (simB !== simA) return simB - simA;
-
-      // Fallback to rating if similarity is exactly equal
+      // 2. Rating priority
       const ratingA = parseFloat(a.rating) || 0;
       const ratingB = parseFloat(b.rating) || 0;
-      return ratingB - ratingA;
+      if (ratingA !== ratingB) return ratingB - ratingA;
+
+      // 3. Similarity fallback
+      const simA = getStringSimilarity(a.title, queryOrFilter);
+      const simB = getStringSimilarity(b.title, queryOrFilter);
+      return simB - simA;
     });
   }
 
@@ -618,7 +633,7 @@ export default function HomeScreen({ navigation }) {
 
       while (pageNum < maxSearchPages) {
         console.log(`[Search] Fetching page ${pageNum} for query: "${trimmed}"`);
-        const pageData = await apiService.searchMedia(trimmed, pageNum);
+        const pageData = await apiService.searchMedia(cleanSearchQuery(trimmed), pageNum);
         if (!pageData || pageData.length === 0) {
           break;
         }
@@ -688,9 +703,28 @@ export default function HomeScreen({ navigation }) {
       try {
         const trimmed = searchQuery.trim();
         if (trimmed.length >= 2) {
-          const data = await apiService.searchMedia(trimmed, 0);
-          if (data && data.length > 0) {
-            const titles = Array.from(new Set(data.map(item => item.title))).slice(0, 6);
+          const cleaned = cleanSearchQuery(trimmed);
+          // Fetch multiple pages in parallel to find Hindi items hidden on later pages
+          const promises = [
+            apiService.searchMedia(cleaned, 0),
+            apiService.searchMedia(cleaned, 1),
+            apiService.searchMedia(cleaned, 2)
+          ];
+          const results = await Promise.all(promises);
+          let data = [];
+          results.forEach(res => {
+            if (res && res.length > 0) data = [...data, ...res];
+          });
+          
+          if (data.length > 0) {
+            const sortedData = [...data].sort((a, b) => {
+              const aHindi = a.title.toLowerCase().includes('hindi');
+              const bHindi = b.title.toLowerCase().includes('hindi');
+              if (aHindi && !bHindi) return -1;
+              if (!aHindi && bHindi) return 1;
+              return (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0);
+            });
+            const titles = Array.from(new Set(sortedData.map(item => item.title))).slice(0, 6);
             setSuggestions(titles);
           } else {
             setSuggestions([]);
@@ -701,7 +735,7 @@ export default function HomeScreen({ navigation }) {
       } catch (e) {
         setSuggestions([]);
       }
-    }, 350);
+    }, 450);
 
     return () => clearTimeout(delayDebounceFn);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -722,7 +756,7 @@ export default function HomeScreen({ navigation }) {
       const maxPages = 15;
 
       while (accumulatedData.length < targetCount && currentPage <= maxPages) {
-        const data = await apiService.searchMedia(query, currentPage);
+        const data = await apiService.searchMedia(cleanSearchQuery(query), currentPage);
         if (data.length === 0) {
           setHasMore(false);
           break;
@@ -952,6 +986,7 @@ export default function HomeScreen({ navigation }) {
           value={searchQuery}
           onChangeText={handleSearch}
           onSubmitEditing={() => {
+            Keyboard.dismiss();
             isTypingRef.current = false;
             setSuggestions([]);
             triggerSearch(searchQuery);
@@ -970,6 +1005,7 @@ export default function HomeScreen({ navigation }) {
         <TouchableOpacity
           style={styles.searchBtn}
           onPress={() => {
+            Keyboard.dismiss();
             isTypingRef.current = false;
             setSuggestions([]);
             triggerSearch(searchQuery);
@@ -988,6 +1024,7 @@ export default function HomeScreen({ navigation }) {
                 style={styles.suggestionRow}
                 activeOpacity={0.8}
                 onPress={() => {
+                  Keyboard.dismiss();
                   isTypingRef.current = false;
                   setSearchQuery(item);
                   searchQueryRef.current = item;
@@ -1034,32 +1071,7 @@ export default function HomeScreen({ navigation }) {
         </View>
       )}
 
-      {/* Filter Horizontal Pill Selector Panel - Always visible when not searching */}
-      {!isSearching && (
-        <View style={styles.filterMenuContainer}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterScroll}
-          >
-            {getFilterList(activeCategory).map((filterName) => {
-              const isSelected = activeFilter === filterName;
-              return (
-                <TouchableOpacity
-                  key={filterName}
-                  style={[styles.filterPill, isSelected && styles.filterPillActive]}
-                  activeOpacity={0.7}
-                  onPress={() => selectFilter(filterName)}
-                >
-                  <Text style={[styles.filterPillText, isSelected && styles.filterPillTextActive]}>
-                    {filterName}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
+      {/* Filter Horizontal Pill Selector Panel - REMOVED */}
 
       {isOffline ? (
         <View style={styles.centerContainer}>
@@ -1074,36 +1086,49 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.retryBtnText}>Retry Connection</Text>
           </TouchableOpacity>
         </View>
-      ) : loading ? (
-        <FlatList
-          key="skeleton-list"
-          data={SKELETON_DATA}
-          numColumns={2}
-          contentContainerStyle={styles.listContainer}
-          columnWrapperStyle={styles.columnWrapper}
-          renderItem={renderSkeletonItem}
-          keyExtractor={item => item.id}
-        />
+      ) : isSearching ? (
+        loading ? (
+          <FlatList
+            key="skeleton-list"
+            data={SKELETON_DATA}
+            numColumns={2}
+            contentContainerStyle={styles.listContainer}
+            columnWrapperStyle={styles.columnWrapper}
+            renderItem={renderSkeletonItem}
+            keyExtractor={item => item.id}
+          />
+        ) : (
+          <FlatList
+            key="media-list"
+            data={paddedMediaList}
+            renderItem={renderCard}
+            keyExtractor={item => item.id}
+            numColumns={2}
+            contentContainerStyle={[styles.listContainer, { paddingBottom: 85 }]}
+            columnWrapperStyle={styles.columnWrapper}
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={10}
+            updateCellsBatchingPeriod={30}
+            windowSize={8}
+            initialNumToRender={10}
+            ListEmptyComponent={listEmpty}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.3}
+            ListFooterComponent={<ListFooter loadingMore={loadingMore} />}
+            extraData={loadingMore}
+          />
+        )
       ) : (
-        <FlatList
-          key="media-list"
-          data={paddedMediaList}
-          renderItem={renderCard}
-          keyExtractor={item => item.id}
-          numColumns={2}
-          contentContainerStyle={[styles.listContainer, { paddingBottom: 85 }]}
-          columnWrapperStyle={styles.columnWrapper}
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={10}
-          updateCellsBatchingPeriod={30}
-          windowSize={8}
-          initialNumToRender={10}
-          ListEmptyComponent={listEmpty}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.3}
-          ListFooterComponent={<ListFooter loadingMore={loadingMore} />}
-          extraData={loadingMore}
-        />
+        <ScrollView contentContainerStyle={{ paddingBottom: 85 }}>
+          {getFilterList(activeCategory).map(filterName => (
+            <HomeSection
+              key={filterName + activeCategory}
+              filter={filterName}
+              category={activeCategory}
+              navigation={navigation}
+            />
+          ))}
+        </ScrollView>
       )}
 
       {/* Bottom Footer Tab Navigation Bar */}

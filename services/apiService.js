@@ -19,7 +19,7 @@ const normalizeBaseUrl = (value) => {
 export const getCachedImageUri = (url) => {
   if (!url || typeof url !== 'string') return 'https://placehold.co/300x450';
   if (url.startsWith('https://images.weserv.nl/')) return url;
-  
+
   // Exclude placeholder images from proxying
   if (url.includes('placehold.co') || url.includes('placeholder')) return url;
 
@@ -34,8 +34,8 @@ export const getCachedImageUri = (url) => {
     targetUrl = targetUrl.replace(/\/t\/p\/[a-zA-Z0-9_-]+\//, '/t/p/w300/');
   }
 
-  // Wrap inside weserv caching layers proxy (resizes to 300px width, q=80 compression)
-  return `https://images.weserv.nl/?url=${encodeURIComponent(targetUrl)}&w=300&q=82`;
+  // Return the original URL directly, weserv.nl is often blocked by source CDNs causing posters to not load
+  return targetUrl;
 };
 
 const API_FALLBACKS = [
@@ -128,8 +128,8 @@ class LRUCache {
 
 // Cache instances — trending/search cached for 60s, details for 5 min
 const trendingCache = new LRUCache(50, 60_000);
-const searchCache   = new LRUCache(30, 60_000);
-const detailsCache  = new LRUCache(100, 300_000);
+const searchCache = new LRUCache(30, 60_000);
+const detailsCache = new LRUCache(100, 300_000);
 
 // ─── Request Deduplicator ─────────────────────────────────────────────────────
 
@@ -586,4 +586,4 @@ export const apiService = {
 };
 
 // Start fetching mirrors in the background immediately after all module variables are initialized
-ensureNetmirrorMirrors().catch(() => {});
+ensureNetmirrorMirrors().catch(() => { });
