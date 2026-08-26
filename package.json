@@ -2,8 +2,7 @@
   "name": "netmirror-stream-app",
   "version": "1.0.0",
   "scripts": {
-    "start": "node server.js",
-    "dev": "expo start",
+    "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web"

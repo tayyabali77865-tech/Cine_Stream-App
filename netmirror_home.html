@@ -534,6 +534,28 @@
         </div>
       </div>
 
+      <!-- App Update Management Panel -->
+      <div class="panel deleted-list-panel">
+        <h2>🚀 App Update Controller</h2>
+        <div class="editor-section">
+          <div class="editor-card">
+            <div class="editor-label">New Version Code (Must be higher than current)</div>
+            <input type="number" id="appVersionCode" placeholder="e.g. 2" style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;margin-bottom:12px;">
+
+            <div class="editor-label">New Version Name</div>
+            <input type="text" id="appVersionName" placeholder="e.g. 1.0.1" style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;margin-bottom:12px;">
+
+            <div class="editor-label">APK Download URL</div>
+            <input type="url" id="appApkUrl" placeholder="https://..." style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;margin-bottom:12px;">
+
+            <div class="editor-label">Release Notes</div>
+            <textarea id="appReleaseNotes" rows="3" placeholder="What's new in this update?" style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;resize:vertical;margin-bottom:12px;"></textarea>
+
+            <button class="btn btn-success" onclick="pushAppUpdate()" style="width:100%;padding:14px;font-size:15px;font-weight:700;">🚀 Push Update to All Users</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Ad Management Panel -->
       <div class="panel deleted-list-panel">
         <h2>📢 Ad Management</h2>
@@ -696,6 +718,47 @@
       toast.innerText = message;
       toast.className = 'toast show' + (isError ? ' error' : '');
       setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // ─── App Update Config ────────────────────────────────────
+    async function pushAppUpdate() {
+      const versionCode = document.getElementById('appVersionCode').value;
+      const versionName = document.getElementById('appVersionName').value;
+      const apkUrl = document.getElementById('appApkUrl').value;
+      const notes = document.getElementById('appReleaseNotes').value;
+
+      if (!versionCode || !versionName || !apkUrl) {
+        showToast('Please fill all required fields!', true);
+        return;
+      }
+
+      try {
+        const endpoint = '/app-config';
+        // Need the custom auth headers but with a simple x-admin-key?
+        // Wait, the backend was configured to use x-admin-key, not HMAC for app-config.
+        // Let's just use x-admin-key.
+        const apiKey = document.getElementById('authKey').value || 'cinestream_secret_secure_key_2026';
+        
+        const res = await fetch(`/api${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-key': apiKey
+          },
+          body: JSON.stringify({
+            latestVersionCode: parseInt(versionCode),
+            latestVersionName: versionName,
+            apkDownloadUrl: apkUrl,
+            forceUpdate: true,
+            releaseNotes: notes
+          })
+        });
+
+        if (!res.ok) throw new Error('Update failed');
+        showToast('App Update pushed to all users successfully!');
+      } catch (err) {
+        showToast('Failed to push update. Check your API key.', true);
+      }
     }
 
     // ─── Search API ───────────────────────────────────────────
