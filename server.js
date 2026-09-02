@@ -1015,8 +1015,13 @@ app.all('/api/download-qualities/:id', async (req, res) => {
  */
 async function extractWatchboxQualities(id, se, ep, dp, na, clientIp = null) {
   const WATCHBOX_DOMAINS = [
-    'speed.watch22.shop',
+    'bet.watch21.shop',
     'play.watch21.shop',
+    'limit.watch22.shop',
+    'bet.watch22.shop',
+    'spedostream2.shop',
+    'dv.watch22.shop',
+    'speed.watch22.shop',
     'test.watch22.shop'
   ];
   const netmirrorReferer = 'https://netmirror.global/';
@@ -1121,8 +1126,13 @@ async function extractDirectVideoLink(hostUrl) {
  */
 async function resolveWatchboxStream(id, se, ep, dp, na, clientIp = null) {
   const WATCHBOX_DOMAINS = [
-    'speed.watch22.shop',
+    'bet.watch21.shop',
     'play.watch21.shop',
+    'limit.watch22.shop',
+    'bet.watch22.shop',
+    'spedostream2.shop',
+    'dv.watch22.shop',
+    'speed.watch22.shop',
     'test.watch22.shop'
   ];
   const netmirrorReferer = 'https://netmirror.global/';
@@ -1187,8 +1197,13 @@ async function resolveWatchboxStream(id, se, ep, dp, na, clientIp = null) {
  */
 async function resolveEmbedJsonStream(embedItem, clientIp = null) {
   const WATCHBOX_DOMAINS = [
-    'speed.watch22.shop',
+    'bet.watch21.shop',
     'play.watch21.shop',
+    'limit.watch22.shop',
+    'bet.watch22.shop',
+    'spedostream2.shop',
+    'dv.watch22.shop',
+    'speed.watch22.shop',
     'test.watch22.shop'
   ];
   const netmirrorReferer = 'https://netmirror.global/';
