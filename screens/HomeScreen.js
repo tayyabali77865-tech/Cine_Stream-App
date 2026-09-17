@@ -26,8 +26,8 @@ if (Platform.OS === 'android') {
 import { Image as ExpoImage } from 'expo-image';
 import { apiService, getCachedImageUri } from '../services/apiService';
 import { Ionicons } from '@expo/vector-icons';
-import { AdBanner728x90 } from '../components/AdBanner';
 import HomeSection from '../components/HomeSection';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -77,8 +77,13 @@ const SEARCH_LANGUAGES = ['All', 'Hindi', 'English', 'Original', 'Tamil', 'Benga
  * Returns language detected from title string.
  * Pure function — no closures, safe to call anywhere.
  */
-function detectLanguage(title) {
-  if (!title) return 'Original';
+function detectLanguage(item) {
+  const title = typeof item === 'string' ? item : (item?.title || '');
+  if (!title) {
+    if (item?.badge && item.badge.trim() !== '') return item.badge.trim();
+    if (item?.country && item.country.trim() !== '') return item.country.trim();
+    return null;
+  }
 
   // 1. Try to find bracketed language suffix: e.g. [Hindi], (English), [Hindi-English]
   const bracketMatch = title.match(/[\[\()]([a-zA-Z\s\-]+)[\]\)]\s*$/);
@@ -97,7 +102,17 @@ function detectLanguage(title) {
   for (const lang of LANGUAGES) {
     if (titleLower.includes(lang.toLowerCase())) return lang;
   }
-  return 'Original';
+  
+  // 3. Fallback to country from API
+  if (typeof item === 'object') {
+    if (item.badge && item.badge.trim() !== '') {
+      return item.badge.trim();
+    }
+    if (item.country && item.country.trim() !== '') {
+      return item.country.trim();
+    }
+  }
+  return null;
 }
 
 function getDisplayBadge(item, activeCategory) {
@@ -242,8 +257,8 @@ function sortMediaList(list, isSearchActive, queryOrFilter) {
     if (ratingB !== ratingA) return ratingB - ratingA;
 
     // Secondary: language priority (Hindi > English > others > Original)
-    const langA = detectLanguage(a.title);
-    const langB = detectLanguage(b.title);
+    const langA = detectLanguage(a) || 'Original';
+    const langB = detectLanguage(b) || 'Original';
     const getPriority = (lang) => {
       if (lang === 'Hindi') return 1;
       if (lang === 'English') return 2;
@@ -281,7 +296,10 @@ const SkeletonCard = memo(({ pulseAnim }) => (
 // Memoized card — posterUri is a string so shallow comparison in memo works perfectly.
 // Passing `item.poster` as a string prevents ExpoImage source object from being
 // recreated every render, which was the primary cause of MediaCard busting its memo.
-const MediaCard = memo(({ posterUri, title, type, onPress }) => (
+const MediaCard = memo(({ item, onPress }) => {
+  const badgeType = getDisplayBadge(item);
+  const langBadge = detectLanguage(item);
+  return (
   <TouchableOpacity
     style={styles.card}
     activeOpacity={0.8}
@@ -289,24 +307,26 @@ const MediaCard = memo(({ posterUri, title, type, onPress }) => (
   >
     <View style={styles.posterWrapper}>
       <ExpoImage
-        source={{ uri: posterUri }}
+        source={{ uri: getCachedImageUri(item.poster) }}
         style={styles.poster}
         contentFit="cover"
         transition={150}
         priority="high"
         cachePolicy="memory-disk"
-        recyclingKey={posterUri}
+        recyclingKey={item.poster}
       />
       <View style={styles.badgeContainer}>
-        <Text style={styles.badgeText}>{type}</Text>
+        <Text style={styles.badgeText}>{badgeType}</Text>
       </View>
-      <View style={styles.langBadgeContainer}>
-        <Text style={styles.langBadgeText}>{detectLanguage(title)}</Text>
-      </View>
+      {langBadge && (
+        <View style={styles.langBadgeContainer}>
+          <Text style={styles.langBadgeText}>{langBadge}</Text>
+        </View>
+      )}
     </View>
-    <Text style={styles.movieTitle} numberOfLines={1}>{title}</Text>
+    <Text style={styles.movieTitle} numberOfLines={1}>{item.title}</Text>
   </TouchableOpacity>
-));
+)});
 
 // ─── Footer Component ─────────────────────────────────────────────────────────
 
@@ -818,7 +838,7 @@ export default function HomeScreen({ navigation }) {
     if (!isSearching || searchMediaList.length === 0) return ['All'];
     const foundLanguages = new Set();
     searchMediaList.forEach(item => {
-      const lang = detectLanguage(item.title);
+      const lang = detectLanguage(item) || 'Original';
       if (lang) foundLanguages.add(lang);
     });
     return ['All', ...Array.from(foundLanguages).sort()];
@@ -837,12 +857,9 @@ export default function HomeScreen({ navigation }) {
     if (!pressHandlersRef.current[item.id]) {
       pressHandlersRef.current[item.id] = () => navigation.navigate('Details', { id: item.id });
     }
-    const badgeType = getDisplayBadge(item, activeCategory);
     return (
       <MediaCard
-        posterUri={getCachedImageUri(item.poster)}
-        title={item.title}
-        type={badgeType}
+        item={item}
         onPress={pressHandlersRef.current[item.id]}
       />
     );
@@ -932,101 +949,10 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.logoCine}>Cine</Text>
           <Text style={styles.logoStream}>Stream</Text>
         </View>
-      </View>
-
-      {/* Search Input Bar with Cross Clear Icon and Search Button */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          ref={searchInputRef}
-          placeholder="Search Movie, Series or Anime"
-          placeholderTextColor="#9CA3AF"
-          value={searchQuery}
-          onChangeText={handleSearch}
-          onSubmitEditing={() => {
-            Keyboard.dismiss();
-            isTypingRef.current = false;
-            setSuggestions([]);
-            triggerSearch(searchQuery);
-          }}
-          style={styles.searchInput}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity
-            style={styles.clearSearchBtn}
-            onPress={handleClearSearch}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.clearSearchText}>✕</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity
-          style={styles.searchBtn}
-          onPress={() => {
-            Keyboard.dismiss();
-            isTypingRef.current = false;
-            setSuggestions([]);
-            triggerSearch(searchQuery);
-          }}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="search" size={18} color="#FFF" />
+        <TouchableOpacity onPress={() => navigation.navigate('Search')} style={{ padding: 4 }}>
+          <Ionicons name="search" size={24} color="#FFF" />
         </TouchableOpacity>
-
-        {/* Suggestions Dropdown Overlay */}
-        {suggestions.length > 0 && (
-          <View style={styles.suggestionsContainer}>
-            {suggestions.map((item, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.suggestionRow}
-                activeOpacity={0.8}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  isTypingRef.current = false;
-                  setSearchQuery(item);
-                  searchQueryRef.current = item;
-                  setSuggestions([]);
-                  triggerSearch(item);
-                }}
-              >
-                <Ionicons name="search-outline" size={15} color="#9CA3AF" style={{ marginRight: 10 }} />
-                <Text style={styles.suggestionText} numberOfLines={1}>
-                  {item}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
       </View>
-
-      <AdBanner728x90 />
-
-      {/* Search Filter Horizontal Pill Selector Panel - Always visible when searching */}
-      {isSearching && (
-        <View style={styles.filterMenuContainer}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterScroll}
-          >
-            {dynamicSearchLanguages.map((langName) => {
-              const isSelected = searchLanguage === langName;
-              return (
-                <TouchableOpacity
-                  key={langName}
-                  style={[styles.filterPill, isSelected && styles.filterPillActive]}
-                  activeOpacity={0.7}
-                  onPress={() => setSearchLanguage(langName)}
-                >
-                  <Text style={[styles.filterPillText, isSelected && styles.filterPillTextActive]}>
-                    {langName}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
 
       {/* Filter Horizontal Pill Selector Panel - REMOVED */}
 
@@ -1076,7 +1002,7 @@ export default function HomeScreen({ navigation }) {
           />
         )
       ) : (
-        <ScrollView contentContainerStyle={{ paddingBottom: 85 }}>
+        <ScrollView contentContainerStyle={{ paddingBottom: 100, paddingTop: 12 }}>
           {getFilterList(activeCategory).map(filterName => (
             <HomeSection
               key={filterName + activeCategory}
@@ -1088,8 +1014,13 @@ export default function HomeScreen({ navigation }) {
         </ScrollView>
       )}
 
-      {/* Bottom Footer Tab Navigation Bar */}
-      <View style={styles.footerTabBar}>
+      {/* Bottom Footer Tab Navigation Bar - Glassmorphism */}
+      <LinearGradient
+        colors={['rgba(30, 30, 46, 0.97)', 'rgba(15, 15, 22, 0.99)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={styles.footerTabBar}
+      >
         {[
           { key: 'All', label: 'Home', iconNameActive: 'home', iconNameInactive: 'home-outline' },
           { key: 'Movies', label: 'Movie', iconNameActive: 'film', iconNameInactive: 'film-outline' },
@@ -1107,7 +1038,7 @@ export default function HomeScreen({ navigation }) {
             >
               <Ionicons
                 name={currentIcon}
-                size={22}
+                size={18}
                 color={isSelected ? '#E50914' : '#9CA3AF'}
               />
               <Text style={[styles.footerTabText, isSelected && styles.footerTabTextActive]}>
@@ -1116,7 +1047,7 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           );
         })}
-      </View>
+      </LinearGradient>
     </View>
   );
 }
@@ -1130,7 +1061,7 @@ const styles = StyleSheet.create({
   },
   appHeader: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -1166,7 +1097,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 12,
+    borderRadius: 24,
     paddingLeft: 16,
     paddingRight: 90,
     color: '#F3F4F6',
@@ -1395,18 +1326,23 @@ const styles = StyleSheet.create({
   },
   footerTabBar: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 70,
-    backgroundColor: '#0F0F14',
-    borderTopWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    bottom: 12,
+    left: 16,
+    right: 16,
+    height: 62,
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingBottom: 5,
-    elevation: 10,
+    paddingHorizontal: 10,
+    elevation: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.7,
+    shadowRadius: 28,
+    overflow: 'hidden',
   },
   footerTabButton: {
     alignItems: 'center',
@@ -1415,17 +1351,16 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   footerTabButtonActive: {
-    borderTopWidth: 2,
-    borderColor: '#E50914',
+    // Replaces the old top border design
   },
   footerTabText: {
-    fontSize: 11,
+    fontSize: 9,
     color: '#9CA3AF',
     marginTop: 4,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   footerTabTextActive: {
-    color: '#E50914',
+    color: '#FFF',
     fontWeight: 'bold',
   },
 });

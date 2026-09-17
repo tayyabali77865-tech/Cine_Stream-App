@@ -16,6 +16,7 @@
     ],
     "plugins": [
       "expo-asset",
+      "@react-native-firebase/app",
       [
         "expo-media-library",
         {
@@ -40,6 +41,7 @@
     ],
     "android": {
       "package": "com.cinestream.tayyabali77865",
+      "googleServicesFile": "./google-services.json",
       "newArchEnabled": true,
       "jsEngine": "hermes",
       "adaptiveIcon": {

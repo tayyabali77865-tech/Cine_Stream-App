@@ -7,8 +7,8 @@ const debuggerHost = Constants.expoConfig?.hostUri || '';
 const hostIP = debuggerHost.split(':')[0] || 'localhost';
 
 // 🚀 HARDCODED to prevent EAS Dashboard secrets from injecting old/wrong values
-const deployedApiBaseUrl = 'https://cinestream-app-production-640b.up.railway.app';
-const secretKey = 'cinestream_secret_secure_key_2026';
+const deployedApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://cinestream-app-production-640b.up.railway.app';
+const secretKey = process.env.EXPO_PUBLIC_API_KEY || 'cinestream_secret_secure_key_2026';
 
 const normalizeBaseUrl = (value) => {
   if (!value) return '';
@@ -35,17 +35,22 @@ export const getCachedImageUri = (url) => {
     return targetUrl; // TMDB is fast enough and might block proxies, direct load
   }
 
+  // Aoneroom blocks wsrv.nl or fails proxying
+  if (targetUrl.includes('aoneroom.com')) {
+    return targetUrl;
+  }
+
   // For other slow domains, use a global CDN proxy (wsrv.nl) to cache, resize and convert to webp
   const encodedUrl = encodeURIComponent(targetUrl);
   return `https://wsrv.nl/?url=${encodedUrl}&w=300&output=webp`;
 };
 
 const API_FALLBACKS = [
+  `http://192.168.0.40:8000/api`,
+  `http://${hostIP}:8000/api`,
+  `http://10.0.2.2:8000/api`,
   deployedApiBaseUrl ? `${normalizeBaseUrl(deployedApiBaseUrl)}/api` : null,
   'https://cinestream-app-production-640b.up.railway.app/api',
-  `http://${hostIP}:8000/api`,
-  `http://192.168.0.40:8000/api`,
-  `http://10.0.2.2:8000/api`,
 ].filter(Boolean);
 
 const preferredBaseUrl = API_FALLBACKS[0] || 'http://localhost:8000/api';
@@ -479,6 +484,21 @@ export const apiService = {
     });
   },
 
+  /**
+   * Fetches similar titles for a given movie/show from the backend API.
+   */
+  async getSimilarMedia(title, page = 0) {
+    try {
+      const response = await customFetch(`/similar/${encodeURIComponent(title)}?page=${page}`);
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data;
+    } catch (e) {
+      console.warn(`Failed to fetch similar media for title ${title}:`, e);
+      return [];
+    }
+  },
+
 
   /**
    * Resolves the direct video CDN stream source URL.
@@ -493,8 +513,20 @@ export const apiService = {
       }
       const rawItem = details ? details._rawItem : null;
 
+      // Sanitize params — null/undefined become empty string, 'Original' maps to 'Hindi'
+      let safeSeason = (season !== null && season !== undefined && season !== 'null' && season !== '') ? String(season) : '';
+      let safeEpisode = (episode !== null && episode !== undefined && episode !== 'null' && episode !== '') ? String(episode) : '';
+      
+      // Auto-fallback to the last available season for TV shows if season is empty (deep links)
+      if (!safeSeason && details && details.seasons && details.seasons.length > 0) {
+        safeSeason = String(details.seasons[details.seasons.length - 1].se);
+        safeEpisode = '1';
+      }
+
+      const safeLang = (lang && lang !== 'Original') ? lang : 'Hindi';
+
       const response = await customFetch(
-        `/stream/${id}?season=${season}&episode=${episode}&lang=${encodeURIComponent(lang)}`,
+        `/stream/${id}?season=${safeSeason}&episode=${safeEpisode}&lang=${encodeURIComponent(safeLang)}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -502,7 +534,8 @@ export const apiService = {
         }
       );
       if (!response.ok) throw new Error('Backend failed to load stream sources.');
-      return await response.json();
+      const responseData = await response.json();
+      return { ...responseData, _resolvedSeason: safeSeason, _resolvedEpisode: safeEpisode, _isTvShow: !!(details && details.seasons && details.seasons.length > 0) };
     } catch (e) {
       console.warn('Backend stream fetch failed:', e);
       throw e;
@@ -597,6 +630,24 @@ export const apiService = {
     } catch (e) {
       console.warn('Ad config update failed:', e);
       return null;
+    }
+  },
+
+  /**
+   * Fetches "Did you mean?" suggestions using the proxy endpoint on the backend
+   */
+  async getDidYouMean(query) {
+    if (!query || query.trim().length < 2) return [];
+    
+    try {
+      // Call our own backend proxy to avoid CORS/Network errors on the mobile app
+      const response = await customFetch(`/suggest?q=${encodeURIComponent(query.trim())}`);
+      if (!response.ok) return [];
+      const data = await response.json();
+      return (data.results || []).map(item => item.title);
+    } catch (err) {
+      console.warn(`⚠️ Did You Mean fetch failed: ${err.message}`);
+      return [];
     }
   }
 };

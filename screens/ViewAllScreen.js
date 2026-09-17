@@ -52,7 +52,9 @@ function getDisplayBadge(item, activeCategory) {
   return 'Movie';
 }
 
-const MediaCard = memo(({ posterUri, title, type, onPress }) => (
+const MediaCard = memo(({ posterUri: initialPosterUri, rawPosterUrl, title, type, onPress }) => {
+  const [posterUri, setPosterUri] = React.useState(initialPosterUri);
+  return (
   <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={onPress}>
     <View style={styles.posterWrapper}>
       <ExpoImage
@@ -63,6 +65,11 @@ const MediaCard = memo(({ posterUri, title, type, onPress }) => (
         priority="high"
         cachePolicy="memory-disk"
         recyclingKey={posterUri}
+        onError={() => {
+          if (rawPosterUrl && posterUri !== rawPosterUrl) {
+            setPosterUri(rawPosterUrl);
+          }
+        }}
       />
       <View style={styles.badgeContainer}>
         <Text style={styles.badgeText}>{type}</Text>
@@ -73,7 +80,8 @@ const MediaCard = memo(({ posterUri, title, type, onPress }) => (
     </View>
     <Text style={styles.movieTitle} numberOfLines={1}>{title}</Text>
   </TouchableOpacity>
-));
+  );
+});
 
 const ListFooter = memo(({ loadingMore }) => {
   if (!loadingMore) return null;
@@ -151,6 +159,7 @@ export default function ViewAllScreen({ route, navigation }) {
     return (
       <MediaCard
         posterUri={getCachedImageUri(item.poster)}
+        rawPosterUrl={item.poster}
         title={item.title}
         type={badgeType}
         onPress={pressHandlersRef.current[item.id]}

@@ -1,0 +1,35 @@
+◇ injected env (23) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+[DNS] ✅ Public DNS servers configured (8.8.8.8, 1.1.1.1)
+
+🚀 Production Scraper Server active on http://0.0.0.0:8000/api
+[MongoDB] ✅ Connected to MongoDB Atlas successfully.
+[MirrorManager] Starting mirror manager...
+[MirrorManager] Scraping NetMirror home to discover mirrors...
+[MirrorManager] Found JS Bundle: https://netmirror.global/assets/index-5ab46ee6.js
+[MirrorManager] Discovered active mirror domains: [ 'https://api2.imdb3.shop/api', 'https://api2.imdb4.shop/api' ]
+[MirrorManager] Mirror https://api2.imdb3.shop/api checked: filterOnline=true (38ms), searchOnline=true (20ms)
+[MirrorManager] Mirror https://api2.imdb4.shop/api checked: filterOnline=true (180ms), searchOnline=true (33ms)
+[MirrorManager] Filter mirrors sorted by latency: [ 'https://api2.imdb3.shop/api', 'https://api2.imdb4.shop/api' ]
+[MirrorManager] Active primary mirror selected: https://api2.imdb3.shop/api
+[MirrorManager] Search mirrors sorted by latency: [ 'https://api2.imdb3.shop/api', 'https://api2.imdb4.shop/api' ]
+[Scraper] Registering 24-hour cron jobs...
+[Scraper] Cron jobs registered successfully.
+[Warmup] Initializing background cache pre-fetch...
+[Fetcher] Sending request to NetMirror: https://api2.imdb3.shop/api/movies/filter?sort_by=date&items_per_page=30&page=0 (Attempt 1/3)
+[Fetcher] Sending request to NetMirror: https://api2.imdb3.shop/api/movies/filter?sort_by=date&items_per_page=30&page=1 (Attempt 1/3)
+[Fetcher] Sending request to NetMirror: https://api2.imdb3.shop/api/movies/filter?sort_by=date&country=Japan&items_per_page=30&page=0 (Attempt 1/3)
+[Fetcher] Sending request to NetMirror: https://api2.imdb3.shop/api/movies/filter?sort_by=date&country=Japan&items_per_page=30&page=1 (Attempt 1/3)
+[Fetcher] Sending request to NetMirror: https://api2.imdb3.shop/api/movies/filter?sort_by=date&type=1&items_per_page=30&page=0 (Attempt 1/3)
+[Fetcher] Sending request to NetMirror: https://api2.imdb3.shop/api/movies/filter?sort_by=date&type=1&items_per_page=30&page=1 (Attempt 1/3)
+[Fetcher] Sending request to NetMirror: https://api2.imdb3.shop/api/movies/filter?sort_by=date&type=2&items_per_page=30&page=0 (Attempt 1/3)
+[Fetcher] Sending request to NetMirror: https://api2.imdb3.shop/api/movies/filter?sort_by=date&type=2&items_per_page=30&page=1 (Attempt 1/3)
+[Fetcher] Sending request to NetMirror: https://api2.imdb3.shop/api/movies/filter?dubbing=Hindi&items_per_page=30&page=0 (Attempt 1/3)
+[Warmup] Preloaded: /movies/filter?sort_by=date&items_per_page=30&page=0 (MISS)
+[Warmup] Preloaded: /movies/filter?sort_by=date&items_per_page=30&page=1 (MISS)
+[Warmup] Preloaded: /movies/filter?sort_by=date&country=Japan&items_per_page=30&page=0 (MISS)
+[Warmup] Preloaded: /movies/filter?sort_by=date&type=1&items_per_page=30&page=0 (MISS)
+[Warmup] Preloaded: /movies/filter?sort_by=date&country=Japan&items_per_page=30&page=1 (MISS)
+[Warmup] Preloaded: /movies/filter?sort_by=date&type=2&items_per_page=30&page=0 (MISS)
+[Warmup] Preloaded: /movies/filter?sort_by=date&type=1&items_per_page=30&page=1 (MISS)
+[Warmup] Preloaded: /movies/filter?sort_by=date&type=2&items_per_page=30&page=1 (MISS)
+[Warmup] Preloaded: /movies/filter?dubbing=Hindi&items_per_page=30&page=0 (MISS)

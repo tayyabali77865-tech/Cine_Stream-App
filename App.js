@@ -8,8 +8,8 @@ import HomeScreen from './screens/HomeScreen';
 import DetailsScreen from './screens/DetailsScreen';
 import PlayerScreen from './screens/PlayerScreen';
 import ViewAllScreen from './screens/ViewAllScreen';
-import { BackgroundAdHandler } from './components/AdBanner';
-import { AdProvider } from './context/AdContext';
+import SearchScreen from './screens/SearchScreen';
+import { SmartlinkAdProvider } from './context/SmartlinkAdContext';
 
 // Enable native screen containers
 enableScreens(true);
@@ -56,7 +56,7 @@ export default function App() {
   }, [fadeAnim]);
 
   return (
-    <AdProvider>
+    <>
       {showSplash ? (
         <View style={styles.splashContainer}>
           <StatusBar barStyle="light-content" backgroundColor="#09090C" />
@@ -74,7 +74,7 @@ export default function App() {
           </Animated.View>
         </View>
       ) : (
-        <>
+        <SmartlinkAdProvider>
           <NavigationContainer>
             <Stack.Navigator
               initialRouteName="Home"
@@ -96,18 +96,23 @@ export default function App() {
                 options={{ headerShown: false }}
               />
               <Stack.Screen
+                name="Search"
+                component={SearchScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
                 name="ViewAll"
                 component={ViewAllScreen}
                 options={{ headerShown: false }}
               />
             </Stack.Navigator>
           </NavigationContainer>
-          <BackgroundAdHandler />
-        </>
+        </SmartlinkAdProvider>
       )}
-    </AdProvider>
+    </>
   );
 }
+
 
 const styles = StyleSheet.create({
   splashContainer: {

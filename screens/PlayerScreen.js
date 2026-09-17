@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useCallback, useReducer } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   StyleSheet,
   Text,
@@ -15,16 +16,17 @@ import {
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { apiService } from '../services/apiService';
-import { AdBanner300x250, SmartLinkAdModal } from '../components/AdBanner';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as NavigationBar from 'expo-navigation-bar';
+import { useSmartlinkAd } from '../context/SmartlinkAdContext';
 
 // ─── Screen Dimensions ────────────────────────────────────────────────────────
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
+const gridItemWidth = (SCREEN_WIDTH - 80) / 5;
 const VIDEO_HEIGHT = Math.round(SCREEN_HEIGHT * 0.40);
 
 // Helper: format milliseconds to hh:mm:ss / mm:ss
@@ -145,9 +147,20 @@ function qualityReducer(state, action) {
 // ─── Player Screen ────────────────────────────────────────────────────────────
 
 export default function PlayerScreen({ route, navigation }) {
-  const { id, title, season, episode, defaultLanguage } = route.params;
+  const { id, title, season, episode, defaultLanguage, seasons } = route.params;
 
   const activeLanguage = defaultLanguage || 'Hindi';
+
+  const { showAdIfReady, setIsPlayerActive } = useSmartlinkAd();
+
+  useFocusEffect(
+    useCallback(() => {
+      setIsPlayerActive(true);
+      return () => {
+        setIsPlayerActive(false);
+      };
+    }, [setIsPlayerActive])
+  );
 
   // ── Reducers replace multiple useState calls ──────────────────────────────
   const [streamState, dispatchStream] = useReducer(streamReducer, INITIAL_STREAM_STATE);
@@ -155,6 +168,16 @@ export default function PlayerScreen({ route, navigation }) {
   const [qualityState, dispatchQuality] = useReducer(qualityReducer, INITIAL_QUALITY_STATE);
 
   // ── Custom Player UI States ──────────────────────────────────────────────
+  const [playbackQuality, setPlaybackQuality] = React.useState(null);
+  const [showPlaybackQualityMenu, setShowPlaybackQualityMenu] = React.useState(false);
+  const [currentSeason, setCurrentSeason] = React.useState(season || null);
+  const [currentEpisode, setCurrentEpisode] = React.useState(episode || null);
+  const [localTitle, setLocalTitle] = React.useState(title || '');
+  const [localSeasons, setLocalSeasons] = React.useState(seasons || null);
+  const [showSeasonSelector, setShowSeasonSelector] = React.useState(false);
+  const [showEpisodeSelector, setShowEpisodeSelector] = React.useState(false);
+  const [showAllEpisodesModal, setShowAllEpisodesModal] = React.useState(false);
+
   const [playbackStatus, setPlaybackStatus] = React.useState(null);
   const [controlsVisible, setControlsVisible] = React.useState(true);
   const [isLocked, setIsLocked] = React.useState(false);
@@ -162,20 +185,7 @@ export default function PlayerScreen({ route, navigation }) {
   const [isLandscape, setIsLandscape] = React.useState(false);
   const [isSeeking, setIsSeeking] = React.useState(false);
   const [seekPosition, setSeekPosition] = React.useState(0);
-  const [adVisible, setAdVisible] = React.useState(false);
-  const [adUrl, setAdUrl] = React.useState("https://omg10.com/4/11503019");
-
-  const handleAdClose = useCallback(() => {
-    setAdVisible(false);
-  }, []);
-
-  React.useEffect(() => {
-    setAdUrl("https://omg10.com/4/11503019");
-    const timer = setTimeout(() => {
-      setAdVisible(true);
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, []);
+  const [showDownloadComplete, setShowDownloadComplete] = React.useState(false);
 
   // ── Refs (no re-render needed) ────────────────────────────────────────────
   const videoRef = useRef(null);
@@ -193,16 +203,44 @@ export default function PlayerScreen({ route, navigation }) {
   downloadingRef.current = dlState.downloading;
 
   // ── Derived ───────────────────────────────────────────────────────────────
-  const videoTitle = title
-    ? (season
-      ? `${title} - S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
-      : title)
+  const videoTitle = localTitle
+    ? (currentSeason
+      ? `${localTitle} - S${String(currentSeason).padStart(2, '0')}E${String(currentEpisode).padStart(2, '0')}`
+      : localTitle)
     : 'Video';
 
-  // ── Load stream on parameters change ──────────────────────────────────────
+  const isTvShow = !!currentSeason || (localSeasons && localSeasons.length > 0);
+  const downloadBtnText = isTvShow ? `Download Episode ${currentEpisode || 1}` : "Download Movie";
+
+  const episodesForSelectedSeason = React.useMemo(() => {
+    if (!localSeasons || localSeasons.length === 0 || !currentSeason) return [];
+    const sObj = localSeasons.find(s => String(s.se) === String(currentSeason));
+    if (!sObj) return [];
+    if (sObj.allEp && sObj.allEp.trim() !== '') {
+      return sObj.allEp.split(',').map(v => v.trim()).filter(Boolean);
+    }
+    const total = sObj.ep || 1;
+    const eps = [];
+    for (let i = 1; i <= total; i++) eps.push(String(i));
+    return eps;
+  }, [localSeasons, currentSeason]);
+
+  // ── Fetch Details for Deep Links ──────────────────────────────────────────
   useEffect(() => {
-    loadStream();
-  }, [loadStream]);
+    if (!seasons || !title) {
+      apiService.getMediaDetails(id).then(details => {
+        setLocalTitle(details.title);
+        if (details.type === 'TV Show') {
+          setLocalSeasons(details.seasons);
+          if (!currentSeason && details.seasons && details.seasons.length > 0) {
+            setCurrentSeason(details.seasons[details.seasons.length - 1].se);
+            setCurrentEpisode(1);
+          }
+        }
+      }).catch(e => console.log('Error fetching deep link details:', e));
+    }
+  }, [id, seasons, title, currentSeason]);
+
 
   // ── Mount / Unmount ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -301,20 +339,17 @@ export default function PlayerScreen({ route, navigation }) {
     await videoRef.current.setStatusAsync({ positionMillis: newPos });
   }, [playbackStatus, resetControlsTimer]);
 
-  const toggleFullscreen = useCallback(() => {
-    resetControlsTimer();
-    setIsFullscreen(prev => !prev);
-  }, [resetControlsTimer]);
-
   const toggleRotate = useCallback(async () => {
     resetControlsTimer();
     try {
       if (isLandscape) {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
         setIsLandscape(false);
+        setIsFullscreen(false);
       } else {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
         setIsLandscape(true);
+        setIsFullscreen(true);
       }
     } catch (err) {
       console.warn('Orientation change failed:', err);
@@ -333,13 +368,29 @@ export default function PlayerScreen({ route, navigation }) {
   const loadStream = useCallback(async () => {
     try {
       dispatchStream({ type: 'LOADING' });
-      const sources = await apiService.getStreamSources(id, season, episode, activeLanguage);
+      setPlaybackStatus(null);
+      setPlaybackQuality(null);
+      setSeekPosition(0);
+      
+      const sources = await apiService.getStreamSources(id, currentSeason, currentEpisode, activeLanguage);
       dispatchStream({ type: 'SUCCESS', sources });
+
+      if (sources && sources.qualities && sources.qualities.length > 0) {
+        const p480 = sources.qualities.find(q => q.quality.includes('480'));
+        setPlaybackQuality(p480 || sources.qualities[0]);
+      } else if (sources) {
+        setPlaybackQuality({ quality: 'Auto', url: sources.videoUrl });
+      }
     } catch (e) {
       console.error('[Player] stream error:', e);
       dispatchStream({ type: 'ERROR', error: 'Could not load stream. Please try again.' });
     }
-  }, [id, season, episode, activeLanguage]);
+  }, [id, currentSeason, currentEpisode, activeLanguage]);
+
+  // ── Load stream on parameters change ──────────────────────────────────────
+  useEffect(() => {
+    loadStream();
+  }, [loadStream]);
 
   // ── Quality Loader ────────────────────────────────────────────────────────
   const openDownloadModal = useCallback(async () => {
@@ -354,7 +405,7 @@ export default function PlayerScreen({ route, navigation }) {
 
     // 2. Fetch from endpoint as backup
     try {
-      const data = await apiService.getDownloadQualities(id, season || '', episode || '', activeLanguage);
+      const data = await apiService.getDownloadQualities(id, currentSeason || '', currentEpisode || '', activeLanguage);
       if (data.qualities && data.qualities.length > 0) {
         dispatchQuality({ type: 'LOADED', qualities: data.qualities, referer: data.referer || null });
         return;
@@ -375,7 +426,7 @@ export default function PlayerScreen({ route, navigation }) {
     } else {
       dispatchQuality({ type: 'ERROR', error: 'Could not fetch download options for this video.' });
     }
-  }, [streamState.sources, id, season, episode, activeLanguage]);
+  }, [streamState.sources, id, currentSeason, currentEpisode, activeLanguage]);
 
   // ── Progress Callback Factory ─────────────────────────────────────────────
   const makeCallback = useCallback((estBytes) => (progressData) => {
@@ -415,9 +466,6 @@ export default function PlayerScreen({ route, navigation }) {
   // ── Start Download ────────────────────────────────────────────────────────
   const startDownload = useCallback(async (quality) => {
     dispatchQuality({ type: 'CLOSE' });
-    setAdUrl("https://omg10.com/4/11503004");
-    setAdVisible(true);
-
     const { status } = await MediaLibrary.requestPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Required', 'Storage permission is needed to save videos to your gallery.');
@@ -437,10 +485,12 @@ export default function PlayerScreen({ route, navigation }) {
     const downloadHeaders = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     };
-    if (referer && referer.trim() !== '') {
+    if (quality.url.includes('hakunaymatata.com')) {
+      downloadHeaders['Referer'] = 'https://movieboxonline.net/';
+    } else if (referer && referer.trim() !== '') {
       downloadHeaders['Referer'] = referer;
     } else if (referer === undefined) {
-      downloadHeaders['Referer'] = 'https://netmirror.global/';
+      downloadHeaders['Referer'] = 'https://fmoviesunblocked.net/';
     }
 
     downloadRef.current = FileSystem.createDownloadResumable(
@@ -453,7 +503,7 @@ export default function PlayerScreen({ route, navigation }) {
     );
 
     await runDownload(fileUri);
-  }, [videoTitle, qualityState.referer, makeCallback, setAdUrl, setAdVisible]);
+  }, [videoTitle, qualityState.referer, makeCallback]);
 
   // ── Core Download Runner ──────────────────────────────────────────────────
   const runDownload = useCallback(async (fileUri) => {
@@ -463,7 +513,7 @@ export default function PlayerScreen({ route, navigation }) {
         await MediaLibrary.saveToLibraryAsync(result.uri);
         await FileSystem.deleteAsync(result.uri, { idempotent: true });
         dispatchDl({ type: 'COMPLETE' });
-        Alert.alert('✅ Download Complete', `"${videoTitle}" saved to your gallery!`);
+        setShowDownloadComplete(true);
       }
     } catch (e) {
       console.warn('[Download] interrupted:', e.message);
@@ -636,18 +686,22 @@ export default function PlayerScreen({ route, navigation }) {
           style={styles.videoTouchWrapper}
         >
           <Video
+            key={playbackQuality ? playbackQuality.url : sources.videoUrl}
             ref={videoRef}
             source={{
-              uri: sources.videoUrl,
+              uri: playbackQuality ? playbackQuality.url : sources.videoUrl,
               headers: {
-                ...(sources.referer ? { Referer: sources.referer } : {}),
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                ...(sources.videoUrl?.includes('hakunaymatata.com') || playbackQuality?.url.includes('hakunaymatata.com') 
+                  ? { Referer: 'https://movieboxonline.net/' } 
+                  : (sources.referer ? { Referer: sources.referer } : {})),
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
               }
             }}
             style={isFullscreen ? styles.videoFullscreen : styles.video}
-            useNativeControls={false} // Disable standard system overlay controls
+            useNativeControls={false}
             resizeMode={ResizeMode.CONTAIN}
             shouldPlay
+            progressUpdateIntervalMillis={500}
             bufferConfig={{
               maxBufferMs: 15000,
               minBufferMs: 1500,
@@ -660,8 +714,8 @@ export default function PlayerScreen({ route, navigation }) {
             onError={(err) => {
               console.error('[Player] video error:', err);
               // Report broken link to backend database
-              const mediaType = season ? 'TV Show' : 'Movie';
-              apiService.reportPlaybackError(id, title, mediaType, season || '', episode || '')
+              const mediaType = currentSeason ? 'TV Show' : 'Movie';
+              apiService.reportPlaybackError(id, title, mediaType, currentSeason || '', currentEpisode || '')
                 .then(success => {
                   if (success) console.log(`[Player] Successfully reported broken media ID: ${id}`);
                 });
@@ -713,6 +767,8 @@ export default function PlayerScreen({ route, navigation }) {
                               { text: 'Stay', style: 'cancel' },
                               { text: 'Cancel & Exit', style: 'destructive', onPress: () => { cancelDownload(); navigation.goBack(); } }
                             ]);
+                          } else if (isFullscreen) {
+                            toggleRotate();
                           } else {
                             navigation.goBack();
                           }
@@ -787,13 +843,51 @@ export default function PlayerScreen({ route, navigation }) {
                     <Text style={styles.timeLabel}>{formatTime(duration)}</Text>
 
                     {/* Action buttons (Fullscreen & Rotate) */}
-                    <TouchableOpacity style={styles.bottomActionBtn} onPress={toggleFullscreen}>
-                      <Ionicons name={isFullscreen ? "contract" : "expand"} size={18} color="#FFF" />
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      {/* Quality Selector */}
+                      {sources && sources.qualities && sources.qualities.length > 0 && (
+                        <View style={{ position: 'relative', justifyContent: 'center' }}>
+                          <TouchableOpacity 
+                            style={styles.qualitySelectorBtn}
+                            onPress={() => setShowPlaybackQualityMenu(!showPlaybackQualityMenu)}
+                          >
+                            <Text style={styles.qualitySelectorText}>{playbackQuality?.quality || 'Auto'}</Text>
+                            <MaterialIcons name="keyboard-arrow-down" size={16} color="#FFF" />
+                          </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.bottomActionBtn} onPress={toggleRotate}>
-                      <MaterialIcons name="screen-rotation" size={18} color="#FFF" />
-                    </TouchableOpacity>
+                          {/* Dropdown Menu */}
+                          {showPlaybackQualityMenu && (
+                            <View style={styles.qualityDropdownMenu}>
+                              {sources.qualities.map((q, i) => (
+                                <TouchableOpacity 
+                                  key={i}
+                                  style={styles.qualityDropdownItem}
+                                  onPress={() => {
+                                    showAdIfReady(() => {
+                                      setPlaybackStatus(null); // Instantly triggers the loading spinner
+                                      setPlaybackQuality(q);
+                                      setShowPlaybackQualityMenu(false);
+                                      resetControlsTimer();
+                                    }, 'PLAYER_ACTION');
+                                  }}
+                                >
+                                  <Text style={[
+                                    styles.qualityDropdownText,
+                                    playbackQuality?.quality === q.quality && { color: '#E50914', fontWeight: 'bold' }
+                                  ]}>
+                                    {q.quality}
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                          )}
+                        </View>
+                      )}
+
+                      <TouchableOpacity style={styles.bottomActionBtn} onPress={toggleRotate}>
+                        <MaterialIcons name="screen-rotation" size={18} color="#FFF" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
 
                 </View>
@@ -811,16 +905,82 @@ export default function PlayerScreen({ route, navigation }) {
             Audio: <Text style={styles.langValue}>{activeLanguage}</Text>
           </Text>
 
-          <TouchableOpacity
-            id="download-button"
-            style={[styles.dlBtn, downloading && styles.dlBtnDisabled]}
-            onPress={openDownloadModal}
-            disabled={downloading}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.dlBtnText}>⬇  Download Video</Text>
-          </TouchableOpacity>
-          <AdBanner300x250 />
+          {downloading ? (
+            <View style={styles.dlInlineCard}>
+              <TouchableOpacity
+                style={styles.dlInlineIconBtn}
+                onPress={!isPaused && !offlinePaused ? pauseDownload : resumeDownload}
+                disabled={offlinePaused}
+              >
+                <Ionicons name={!isPaused && !offlinePaused ? "pause" : "play"} size={22} color="#FFF" />
+              </TouchableOpacity>
+              
+              <View style={styles.dlInlineProgressWrapper}>
+                <View style={styles.dlInlineTrack}>
+                  <View style={[styles.dlInlineFill, { width: `${Math.round(progress * 100)}%` }]} />
+                </View>
+                <Text style={styles.dlInlineStats}>
+                  {offlinePaused ? 'Waiting for connection...' : `${Math.round(progress * 100)}% • ${downloadedMB} MB / ${totalMB} MB`}
+                </Text>
+              </View>
+
+              <TouchableOpacity style={styles.dlInlineIconBtn} onPress={cancelDownload}>
+                <Ionicons name="close" size={24} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              id="download-button"
+              style={styles.dlBtn}
+              onPress={() => showAdIfReady(() => openDownloadModal())}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.dlBtnText}>{downloadBtnText}</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Season and Episode Pickers */}
+          {isTvShow && localSeasons && localSeasons.length > 0 && (
+            <View style={{ marginTop: 16 }}>
+              <TouchableOpacity
+                style={[styles.pickerBtn, { marginBottom: 16 }]}
+                onPress={() => setShowSeasonSelector(true)}
+              >
+                <Text style={styles.pickerBtnText}>Season {String(currentSeason).padStart(2, '0')}</Text>
+                <Ionicons name="chevron-down" size={16} color="#FFF" />
+              </TouchableOpacity>
+              
+              <Text style={{ color: '#9CA3AF', fontSize: 13, fontWeight: '600', textTransform: 'uppercase', marginBottom: 10 }}>Episodes</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.episodeScrollRow}
+              >
+                <TouchableOpacity
+                  style={[styles.episodeSquare, { backgroundColor: '#E50914' }]}
+                  activeOpacity={0.7}
+                  onPress={() => setShowAllEpisodesModal(true)}
+                >
+                  <Text style={[styles.episodeSquareText, { color: '#ffffff' }]}>All</Text>
+                </TouchableOpacity>
+                {episodesForSelectedSeason.map((epNum) => (
+                  <TouchableOpacity
+                    key={epNum}
+                    style={[
+                      styles.episodeSquare, 
+                      String(currentEpisode) === String(epNum) && { borderColor: '#E50914', backgroundColor: 'rgba(229, 9, 20, 0.1)' }
+                    ]}
+                    activeOpacity={0.7}
+                    onPress={() => showAdIfReady(() => setCurrentEpisode(epNum), 'PLAYER_ACTION')}
+                  >
+                    <Text style={[styles.episodeSquareText, String(currentEpisode) === String(epNum) && { color: '#E50914' }]}>
+                      {String(epNum).padStart(2, '0')}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
         </ScrollView>
       )}
 
@@ -849,7 +1009,6 @@ export default function PlayerScreen({ route, navigation }) {
 
             {!qualitiesLoading && !qualityError && qualities.map((q) => (
               <TouchableOpacity
-                // Use quality string as key — more stable than array index
                 key={q.quality}
                 id={`quality-option-${q.quality}`}
                 style={styles.qualityRow}
@@ -872,62 +1031,107 @@ export default function PlayerScreen({ route, navigation }) {
         </View>
       </Modal>
 
-      {/* ── Download Progress Card ── */}
-      {downloading && (
-        <View style={styles.progressContainer}>
-          <View style={styles.progressCard}>
-            <Text style={styles.progressTitle} numberOfLines={1}>{videoTitle}</Text>
-            <Text style={styles.progressQuality}>{selectedQuality?.quality} · {selectedQuality?.size}</Text>
-
-            {/* Progress Bar */}
-            <View style={styles.barTrack}>
-              <View style={[styles.barFill, { width: `${Math.round(progress * 100)}%` }]} />
-            </View>
-
-            {/* Stats */}
-            <View style={styles.statsRow}>
-              <Text style={styles.statsText}>
-                {Math.round(progress * 100)}%  ·  {downloadedMB} MB / {totalMB} MB
-              </Text>
-              <Text style={styles.statsText}>{speedMB} MB/s</Text>
-            </View>
-            <Text style={styles.etaText}>
-              {offlinePaused
-                ? '⚠️  No connection — auto-resuming when restored…'
-                : isPaused
-                  ? 'Paused'
-                  : `ETA: ${eta}`}
-            </Text>
-
-            {/* Controls */}
-            <View style={styles.controls}>
-              {!isPaused && !offlinePaused ? (
-                <TouchableOpacity id="pause-download" style={styles.ctrlBtn} onPress={pauseDownload}>
-                  <Text style={styles.ctrlText}>Pause</Text>
-                </TouchableOpacity>
-              ) : (
+      {/* ── Season Selection Modal ── */}
+      <Modal
+        visible={showSeasonSelector}
+        transparent
+        animationType="none"
+        onRequestClose={() => setShowSeasonSelector(false)}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>Select Season</Text>
+            <ScrollView style={{ maxHeight: 250, marginTop: 12 }}>
+              {localSeasons && localSeasons.map((sItem) => (
                 <TouchableOpacity
-                  id="resume-download"
-                  style={[styles.ctrlBtn, styles.resumeBtn]}
-                  onPress={resumeDownload}
-                  disabled={offlinePaused}
+                  key={sItem.se}
+                  style={styles.qualityRow}
+                  onPress={() => {
+                    setCurrentSeason(sItem.se);
+                    // Default to episode 1 when changing seasons
+                    setCurrentEpisode("1");
+                    setShowSeasonSelector(false);
+                  }}
                 >
-                  <Text style={styles.ctrlText}>Resume</Text>
+                  <Text style={[styles.qualityLabel, currentSeason === sItem.se && { color: '#E50914' }]}>
+                    Season {String(sItem.se).padStart(2, '0')}
+                  </Text>
                 </TouchableOpacity>
-              )}
-              <TouchableOpacity id="cancel-download" style={[styles.ctrlBtn, styles.cancelBtn]} onPress={cancelDownload}>
-                <Text style={styles.ctrlText}>✕  Cancel</Text>
-              </TouchableOpacity>
-            </View>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.cancelRow} onPress={() => setShowSeasonSelector(false)}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </View>
-      )}
+      </Modal>
 
-      <SmartLinkAdModal
-        visible={adVisible}
-        onClose={handleAdClose}
-        adUrl={adUrl}
-      />
+
+
+      {/* ── Download Complete Modal ── */}
+      <Modal
+        visible={showDownloadComplete}
+        transparent
+        animationType="none"
+        onRequestClose={() => setShowDownloadComplete(false)}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.successModal}>
+            <Ionicons name="checkmark-circle" size={50} color="#10B981" style={{ marginBottom: 12 }} />
+            <Text style={styles.successTitle}>Download Complete</Text>
+            <Text style={styles.successMessage}>
+              <Text style={{ fontWeight: '700', color: '#FFF' }}>"{videoTitle}"</Text> saved to gallery.
+            </Text>
+            <TouchableOpacity 
+              style={styles.successBtn} 
+              activeOpacity={0.8}
+              onPress={() => setShowDownloadComplete(false)}
+            >
+              <Text style={styles.successBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── All Episodes Modal ── */}
+      <Modal
+        visible={showAllEpisodesModal}
+        transparent={true}
+        animationType="none"
+        onRequestClose={() => setShowAllEpisodesModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>All Episodes</Text>
+              <TouchableOpacity onPress={() => setShowAllEpisodesModal(false)}>
+                <Ionicons name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={styles.allEpisodesGrid}>
+              {episodesForSelectedSeason.map((epNum) => (
+                <TouchableOpacity
+                  key={epNum}
+                  style={[
+                    styles.episodeSquare,
+                    { width: gridItemWidth, height: gridItemWidth },
+                    String(currentEpisode) === String(epNum) && { borderColor: '#E50914', backgroundColor: 'rgba(229, 9, 20, 0.1)' }
+                  ]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setShowAllEpisodesModal(false);
+                    showAdIfReady(() => setCurrentEpisode(epNum), 'PLAYER_ACTION');
+                  }}
+                >
+                  <Text style={[styles.episodeSquareText, String(currentEpisode) === String(epNum) && { color: '#E50914' }]}>
+                    {String(epNum).padStart(2, '0')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1132,6 +1336,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
+  qualitySelectorBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  qualitySelectorText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '700',
+    marginRight: 2,
+  },
+  qualityDropdownMenu: {
+    position: 'absolute',
+    bottom: 35,
+    left: 0,
+    backgroundColor: 'rgba(20,20,25,0.95)',
+    borderRadius: 8,
+    paddingVertical: 4,
+    minWidth: 70,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  qualityDropdownItem: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  qualityDropdownText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '500',
+  },
   statusText: { color: '#9CA3AF', marginTop: 12, fontSize: 14 },
   errorText: {
     color: '#EF4444', fontSize: 16, textAlign: 'center',
@@ -1157,7 +1396,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   panelContent: { paddingHorizontal: 24, paddingTop: 28, paddingBottom: 40 },
-  mediaTitle: { fontSize: 20, fontWeight: '800', color: '#FFF', marginBottom: 6 },
+  mediaTitle: { fontSize: 18, fontWeight: '800', color: '#FFF', marginBottom: 6 },
   langLabel: { fontSize: 13, color: '#6B7280', marginBottom: 24 },
   langValue: { color: '#E50914', fontWeight: '700' },
   dlBtn: {
@@ -1170,6 +1409,49 @@ const styles = StyleSheet.create({
   },
   dlBtnDisabled: { backgroundColor: '#374151', shadowOpacity: 0, elevation: 0 },
   dlBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  pickerBtn: {
+    flex: 0,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1A1A22',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  pickerBtnText: {
+    color: '#E5E7EB',
+    fontSize: 13,
+    fontWeight: '600',
+    marginRight: 6,
+  },
+  episodeScrollRow: {
+    flexDirection: 'row',
+    paddingRight: 16,
+    gap: 10,
+  },
+  episodeWrapContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+  },
+  episodeSquare: {
+    width: 46,
+    height: 46,
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  episodeSquareText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
   overlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.78)',
     justifyContent: 'center', alignItems: 'center',
@@ -1198,42 +1480,44 @@ const styles = StyleSheet.create({
   qualitySize: { color: '#A855F7', fontWeight: '700', fontSize: 13 },
   cancelRow: { paddingVertical: 14, alignItems: 'center', marginTop: 4 },
   cancelText: { color: '#6B7280', fontWeight: '600', fontSize: 14 },
-  progressContainer: {
-    position: 'absolute', bottom: 20, left: 0, right: 0,
-    backgroundColor: 'rgba(5,5,7,0.9)',
-    paddingHorizontal: 14, paddingTop: 14, paddingBottom: 24,
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+  dlInlineCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    marginHorizontal: 4,
   },
-  progressCard: {
-    backgroundColor: '#13131A', borderRadius: 16,
-    padding: 16, borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    elevation: 8, shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 6,
+  dlInlineIconBtn: {
+    padding: 8,
   },
-  progressTitle: { fontSize: 15, fontWeight: '700', color: '#FFF', marginBottom: 2 },
-  progressQuality: { fontSize: 12, color: '#A855F7', fontWeight: '600', marginBottom: 12 },
-  barTrack: {
-    height: 6, backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 3, overflow: 'hidden', marginBottom: 8,
+  dlInlineProgressWrapper: {
+    flex: 1,
+    marginHorizontal: 12,
+    justifyContent: 'center',
   },
-  barFill: { height: '100%', backgroundColor: '#E50914', borderRadius: 3 },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  statsText: { color: '#E5E7EB', fontSize: 12, fontWeight: '500' },
-  etaText: { color: '#9CA3AF', fontSize: 11, marginBottom: 14 },
-  controls: { flexDirection: 'row', gap: 8 },
-  ctrlBtn: {
-    flex: 1, backgroundColor: 'rgba(255,255,255,0.07)',
-    paddingVertical: 11, borderRadius: 10, alignItems: 'center',
+  dlInlineTrack: {
+    height: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 6,
   },
-  resumeBtn: { backgroundColor: '#16A34A' },
-  cancelBtn: {
-    backgroundColor: 'rgba(239,68,68,0.12)',
-    borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)',
+  dlInlineFill: {
+    height: '100%',
+    backgroundColor: '#E50914',
+    borderRadius: 3,
   },
-  ctrlText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
+  dlInlineStats: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   fullscreenAdOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
@@ -1271,4 +1555,76 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  successModal: {
+    width: '75%', 
+    backgroundColor: '#0F0F13',
+    borderRadius: 16, 
+    padding: 24,
+    borderWidth: 1, 
+    borderColor: 'rgba(229, 9, 20, 0.3)',
+    alignItems: 'center', 
+    shadowColor: '#E50914',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2, 
+    shadowRadius: 16, 
+    elevation: 10,
+  },
+  successTitle: { 
+    fontSize: 18, 
+    fontWeight: '800', 
+    color: '#FFF', 
+    marginBottom: 6, 
+    textAlign: 'center' 
+  },
+  successMessage: { 
+    fontSize: 13, 
+    color: '#9CA3AF', 
+    textAlign: 'center', 
+    marginBottom: 20, 
+    lineHeight: 18 
+  },
+  successBtn: {
+    backgroundColor: '#E50914', 
+    borderRadius: 8, 
+    paddingVertical: 10, 
+    width: '100%', 
+    alignItems: 'center'
+  },
+  successBtnText: { 
+    color: '#FFF', 
+    fontSize: 14, 
+    fontWeight: '700', 
+    textTransform: 'uppercase', 
+    letterSpacing: 0.5 
+  },
+  allEpisodesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'flex-start',
+    paddingBottom: 40,
+  },
+  modalContent: {
+    backgroundColor: '#121212',
+    height: '60%',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontFamily: 'Outfit_700Bold',
+  }
 });

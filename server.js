@@ -19,6 +19,7 @@ const {
   LRUCacheWithSWR
 } = require('./services/cacheService');
 const db = require('./services/mongoService');
+const ScraperService = require('./services/scraperService');
 
 const app = express();
 app.set('trust proxy', 1); // Trust first proxy (Railway)
@@ -144,6 +145,11 @@ app.use((req, res, next) => {
     return next();
   }
 
+  // Exempt admin routes for manual testing
+  if (urlClean.startsWith('/api/admin')) {
+    return next();
+  }
+
   const signature = req.headers['x-signature'];
   const timestamp = req.headers['x-timestamp'];
 
@@ -172,8 +178,8 @@ app.use((req, res, next) => {
   next();
 });
 
-const REFERER_URL = 'https://fmoviesunblocked.net/';
-const HM_SECRET = 'netmirror###@@sss';
+const REFERER_URL = 'https://netmirror.center/';
+const HM_SECRET = 'net###@@sss';
 
 const getHeaders = (referer = REFERER_URL, clientIp = null) => {
   const hdrs = {
@@ -260,17 +266,56 @@ async function fetchFromNetmirrorWithRetry(endpoint) {
  * 1. Fetch Trending/Latest Media
  */
 app.get('/api/trending', async (req, res) => {
-  const page = req.query.page || 0;
+  const page = parseInt(req.query.page) || 0;
   const filter = req.query.filter || 'Latest';
   const category = req.query.category || 'All';
   const cacheKey = `${category}_${filter}_${page}`;
 
   try {
+    const MediaList = require('./models/MediaList');
+    const Media = require('./models/Media');
+    
+    const listDoc = await MediaList.findOne({ category, filter }).lean();
+    let dbResults = null;
+    let localPages = 0;
+    
+    if (listDoc && listDoc.items && listDoc.items.length > 0) {
+      localPages = Math.ceil(listDoc.items.length / 30);
+      const startIdx = page * 30;
+      const endIdx = startIdx + 30;
+      const pageIds = listDoc.items.slice(startIdx, endIdx);
+      
+      if (pageIds.length > 0) {
+        const unorderedMedia = await Media.find({ id: { $in: pageIds } }).lean();
+        // Reorder to match exact scraped order
+        dbResults = pageIds.map(id => unorderedMedia.find(m => m.id === id)).filter(Boolean);
+      }
+    }
+    if (dbResults && dbResults.length > 0) {
+      const mediaList = dbResults.map(item => ({
+        id: item.id,
+        title: item.title ? item.title.trim() : 'Unknown Title',
+        poster: item.backdrop_path || item.poster || 'https://placehold.co/300x450',
+        type: item.type === 'TV Show' ? 'TV Show' : 'Movie',
+        releaseDate: item.releaseDate || 'N/A',
+        country: item.country || '',
+        channel: '',
+        rating: parseFloat(item.rating) || 0,
+        badge: item.badge || '',
+        isCustom: false
+      }));
+      res.setHeader('X-Cache-Status', 'DB_HIT');
+      return res.json(mediaList);
+    }
+
     let results = [];
     let status = 'MISS';
 
+    // Map the requested page to Netmirror's page, accounting for local DB pages
+    const nmPage = Math.max(0, page - localPages);
+
     if (filter === 'Trending' && category !== 'Anime') {
-      const endpoint = `/tranding?id=25&page=${page}`;
+      const endpoint = `/tranding?id=11&page=${nmPage}`;
       const cacheRes = await catalogCache.get(endpoint);
       status = cacheRes.status;
       const rawResults = cacheRes.value.results || [];
@@ -310,12 +355,12 @@ app.get('/api/trending', async (req, res) => {
           } else if (filter === 'English') {
             queryParams += '&dubbing=English';
           }
-          fallbackEndpoint = `/movies/filter?${queryParams}&items_per_page=30&page=${page}`;
+          fallbackEndpoint = `/movies/filter?${queryParams}&items_per_page=30&page=${nmPage}`;
         } else if (category === 'All') {
-          fallbackEndpoint = `/movies/filter?sort_by=date&items_per_page=30&page=${page}`;
+          fallbackEndpoint = `/movies/filter?sort_by=date&items_per_page=30&page=${nmPage}`;
         } else {
           let typeParam = category === 'Movies' ? '&type=1' : '&type=2';
-          fallbackEndpoint = `/movies/filter?sort_by=date${typeParam}&items_per_page=30&page=${page}`;
+          fallbackEndpoint = `/movies/filter?sort_by=date${typeParam}&items_per_page=30&page=${nmPage}`;
         }
         const cacheRes = await catalogCache.get(fallbackEndpoint);
         status = cacheRes.status;
@@ -330,12 +375,13 @@ app.get('/api/trending', async (req, res) => {
         } else if (filter === 'English') {
           queryParams += '&dubbing=English';
         }
-        const endpoint = `/movies/filter?${queryParams}&items_per_page=30&page=${page}`;
+        const endpoint = `/movies/filter?${queryParams}&items_per_page=30&page=${nmPage}`;
         const cacheRes = await catalogCache.get(endpoint);
         status = cacheRes.status;
         results = cacheRes.value.results || [];
       } else {
         let queryParams = 'sort_by=date';
+        let customEndpoint = null;
 
         if (category === 'Series') {
           // Build server-side filter params directly to match netmirror.center/explore/tv
@@ -346,7 +392,7 @@ app.get('/api/trending', async (req, res) => {
           } else if (filter === 'Bollywood') {
             queryParams = 'type=2&country=india&dubbing=Hindi';
           } else if (filter === 'Hollywood') {
-            queryParams = 'type=2&countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
+            queryParams = 'type=2&country=United+States&sort_by=date';
           } else if (filter === 'Korean') {
             queryParams = 'type=2&country=Korea';
           } else if (filter === 'Chinese') {
@@ -376,27 +422,27 @@ app.get('/api/trending', async (req, res) => {
             queryParams = 'type=1&sort_by=date';
           }
         } else {
-          // All category
+          // All category (Homepage)
           if (filter === 'Hindi') {
             queryParams = 'dubbing=Hindi';
           } else if (filter === 'English') {
             queryParams = 'dubbing=English';
           } else if (filter === 'Bollywood') {
-            queryParams = 'country=india&dubbing=Hindi';
+            queryParams = 'country=India&sort_by=date';
           } else if (filter === 'Hollywood') {
-            queryParams = 'countryNotParam=india&countryNot=Nigeria&countryNot2=Philippines';
+            queryParams = 'country=United+States&sort_by=date';
           } else if (filter === 'Korean') {
-            queryParams = 'country=Korea';
+            queryParams = 'country=Korea&sort_by=date';
           } else if (filter === 'Chinese') {
-            queryParams = 'country=China';
+            queryParams = 'country=China&sort_by=date';
           } else if (filter === 'South Indian') {
-            queryParams = 'country=india';
+            customEndpoint = `/tranding?id=15&page=${nmPage}`;
           } else {
-            queryParams = 'sort_by=date';
+            queryParams = 'dubbing=Hindi&sort_by=date';
           }
         }
 
-        const endpoint = `/movies/filter?${queryParams}&items_per_page=30&page=${page}`;
+        const endpoint = customEndpoint || `/movies/filter?${queryParams}&items_per_page=30&page=${nmPage}`;
         const cacheRes = await catalogCache.get(endpoint);
         status = cacheRes.status;
         results = cacheRes.value.results || [];
@@ -420,6 +466,7 @@ app.get('/api/trending', async (req, res) => {
       country: item.cn || '',
       channel: item.channel || '',
       rating: parseFloat(item.vote_average) || 0,
+      badge: item.lang || item.dubbing || item.quality || item.badge || '',
       isCustom: overridesMap.has(String(item.id))
     }));
 
@@ -434,6 +481,35 @@ app.get('/api/trending', async (req, res) => {
 /**
  * 2. Search Media — queries all available mirrors in parallel for comprehensive results
  */
+/**
+ * Suggest (Did you mean)
+ */
+app.get('/api/suggest', async (req, res) => {
+  const query = req.query.q;
+  if (!query) return res.json([]);
+  
+  try {
+    const allMirrors = mirrorManager.getSearchMirrors();
+    const mirror = allMirrors[0] || 'https://api2.imdb4.shop/api';
+    // Strip only the trailing /api suffix, not any 'api' occurrence in the hostname
+    const baseUrl = mirror.replace(/\/api$/, '');
+    const url = `${baseUrl}/suggest.php?q=${encodeURIComponent(query)}`;
+    
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'Referer': 'https://netmirror.center/'
+      },
+      timeout: 5000
+    });
+    
+    res.json(response.data);
+  } catch (err) {
+    console.warn(`[Suggest] Failed for ${query}: ${err.message}`);
+    res.json({ results: [] });
+  }
+});
+
 app.get('/api/search', async (req, res) => {
   const query = req.query.q;
   const page = parseInt(req.query.page || 0);
@@ -510,11 +586,41 @@ app.get('/api/search', async (req, res) => {
         releaseDate: item.release_date || 'N/A',
         country: item.cn || '',
         channel: item.channel || '',
-        rating: parseFloat(item.vote_average) || 0
+        rating: parseFloat(item.vote_average) || 0,
+        badge: item.lang || item.dubbing || item.quality || item.badge || '',
+        isCustom: false
       }));
 
     console.log(`[Search] "${queryToSearch}" page ${page} → ${mediaList.length} results from ${allMirrors.length} mirrors`);
     res.json(mediaList);
+
+    // Background: save search results to MongoDB (new items only)
+    setImmediate(async () => {
+      try {
+        const Media = require('./models/Media');
+        const rawItems = mergedResults.filter(item => !deletedIdsSet.has(String(item.id)));
+        for (const item of rawItems) {
+          await Media.findOneAndUpdate(
+            { id: String(item.id) },
+            {
+              $set: {
+                title: item.title || 'Unknown',
+                backdrop_path: item.backdrop_path,
+                type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
+                releaseDate: item.release_date,
+                country: item.cn || '',
+                badge: item.lang || item.dubbing || item.quality || '',
+                rating: String(parseFloat(item.vote_average) || 0),
+              }
+            },
+            { upsert: true }
+          );
+        }
+      } catch (dbErr) {
+        // Silent fail — search caching is best-effort
+      }
+    });
+
   } catch (error) {
     console.error('Error searching:', error.message);
     res.status(500).json({ error: 'Failed to complete search query.' });
@@ -527,6 +633,28 @@ app.get('/api/search', async (req, res) => {
 app.get('/api/details/:id', async (req, res) => {
   const { id } = req.params;
   try {
+    const Media = require('./models/Media');
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // ── A. Try MongoDB first (if details were scraped within 24h) ──
+    const cachedItem = await Media.findOne({ id: String(id) }).lean();
+    if (cachedItem && cachedItem.detailsScrapedAt && cachedItem.detailsScrapedAt > twentyFourHoursAgo) {
+      console.log(`[DB] ✅ Serving details from MongoDB for ID: ${id}`);
+      res.setHeader('X-Cache-Status', 'DB_HIT');
+      return res.json({
+        id: cachedItem.id,
+        title: cachedItem.title ? cachedItem.title.trim() : 'Unknown Title',
+        description: cachedItem.description || 'No description available.',
+        poster: cachedItem.backdrop_path || cachedItem.poster || 'https://placehold.co/300x450',
+        type: cachedItem.type || 'Movie',
+        seasons: cachedItem.seasons || null,
+        audioLanguages: cachedItem.audioLanguages && cachedItem.audioLanguages.length > 0 ? cachedItem.audioLanguages : ['Original'],
+        trailer: cachedItem.trailer || null,
+        _rawItem: cachedItem.rawItem,
+      });
+    }
+
+    // ── B. Fetch from upstream (existing logic) ──
     const endpoint = `/movie/${id}`;
     const { value: data, status } = await detailsCache.get(endpoint);
     const results = data.results || [];
@@ -550,8 +678,7 @@ app.get('/api/details/:id', async (req, res) => {
     const mediaType = hasValidSeasons ? 'TV Show' : 'Movie';
     const seasonsList = hasValidSeasons ? item.season : null;
 
-    res.setHeader('X-Cache-Status', status);
-    res.json({
+    const responsePayload = {
       id: item.id,
       title: item.title ? item.title.trim() : 'Unknown Title',
       description: item.dis || 'No description available.',
@@ -561,10 +688,58 @@ app.get('/api/details/:id', async (req, res) => {
       audioLanguages: alternateDubs,
       trailer: item.trailer || null,
       _rawItem: item,
+    };
+
+    // ── C. Send response immediately, save to MongoDB in background ──
+    res.setHeader('X-Cache-Status', status);
+    res.json(responsePayload);
+
+    // Background save (doesn't block response)
+    setImmediate(async () => {
+      try {
+        await Media.findOneAndUpdate(
+          { id: String(item.id || id) },
+          {
+            $set: {
+              title: item.title || 'Unknown',
+              backdrop_path: item.backdrop_path,
+              type: mediaType,
+              releaseDate: item.release_date || item.releaseDate,
+              country: item.cn || item.country,
+              description: item.dis,
+              seasons: seasonsList,
+              audioLanguages: alternateDubs,
+              trailer: item.trailer || null,
+              rawItem: item,
+              detailsScrapedAt: new Date(),
+            }
+          },
+          { upsert: true }
+        );
+        console.log(`[DB] 💾 Saved details to MongoDB for ID: ${id} (background)`);
+      } catch (dbErr) {
+        console.error(`[DB] Failed to save details for ID ${id}:`, dbErr.message);
+      }
     });
+
   } catch (error) {
     console.error(`Error fetching details for ID ${id}:`, error.message);
     res.status(500).json({ error: 'Failed to retrieve movie details.' });
+  }
+});
+
+
+app.get('/api/similar/:title', async (req, res) => {
+  const { title } = req.params;
+  const page = req.query.page || 0;
+  try {
+    const url = `https://api2.imdb4.shop/api/related/${encodeURIComponent(title)}?page=${page}`;
+    const axios = require('axios');
+    const response = await axios.get(url, { timeout: 10000 });
+    res.json(response.data.results || []);
+  } catch (error) {
+    console.error(`Error fetching similar titles for ${title}:`, error.message);
+    res.json([]); // Return empty array on failure instead of error, so app handles it gracefully
   }
 });
 
@@ -572,7 +747,9 @@ function isUrlExpired(url) {
   if (!url || typeof url !== 'string') return true;
   try {
     const parsed = new URL(url);
-    const expiresParam = parsed.searchParams.get('Expires') || parsed.searchParams.get('expires') || parsed.searchParams.get('expiry') || parsed.searchParams.get('exp');
+    // Check standard expiry params only (NOT 't' — hakunaymatata 't' is a sign timestamp, not expiry)
+    const expiresParam = parsed.searchParams.get('Expires') || parsed.searchParams.get('expires')
+      || parsed.searchParams.get('expiry') || parsed.searchParams.get('exp');
     if (expiresParam) {
       const expiresVal = parseInt(expiresParam, 10);
       if (!isNaN(expiresVal)) {
@@ -594,9 +771,13 @@ function isUrlExpired(url) {
  */
 app.all('/api/stream/:id', async (req, res) => {
   const { id } = req.params;
-  const se = req.query.season || '1';
-  const ep = req.query.episode || '1';
-  const lang = req.query.lang || 'Hindi';
+  // Sanitize 'null' string values that may come from client
+  const rawSe = req.query.season;
+  const rawEp = req.query.episode;
+  const se = (!rawSe || rawSe === 'null' || rawSe === 'undefined') ? '' : rawSe;
+  const ep = (!rawEp || rawEp === 'null' || rawEp === 'undefined') ? '' : rawEp;
+  const rawLang = req.query.lang || 'Hindi';
+  const lang = (rawLang === 'Original' || !rawLang) ? 'Hindi' : rawLang;
   const clientIp = req.headers['x-forwarded-for'] || req.ip;
 
   try {
@@ -623,6 +804,10 @@ app.all('/api/stream/:id', async (req, res) => {
       return res.json(cachedEntry.value);
     }
 
+    // ✅ Deduplication: agar 1000 users same stream maangein to sirf 1 request Netmirror ko jayegi
+    // Baaki 999 users us ek hi promise ka wait karengy aur result share karengy
+    const streamResult = await deduplicator.execute(`stream:${cacheKey}`, async () => {
+
     let item = null;
     if (req.method === 'POST' && req.body && req.body.item) {
       item = req.body.item;
@@ -640,6 +825,7 @@ app.all('/api/stream/:id', async (req, res) => {
 
     let resolvedVideoUrl = null;
     let resolvedQualities = [];
+    let resolvedReferer = REFERER_URL;
     let targetId = id;
 
     // alternate language handling
@@ -681,8 +867,8 @@ app.all('/api/stream/:id', async (req, res) => {
     // ─── Parallel Resolution: Run all scenarios concurrently ─────────────────
     const resolveTasks = [];
 
-    // Scenario 1: Direct Embed
-    if (item.embed) {
+    // Scenario 1: Direct Embed (Skip for TV shows because it's usually just Episode 1 or a trailer)
+    if (item.embed && item.media_type !== 'tv' && !hasValidSeasons) {
       resolveTasks.push((async () => {
         const rawEmbedUrl = item.embed;
         const urlParamMatch = rawEmbedUrl.match(/url=([^&]+)/);
@@ -705,7 +891,8 @@ app.all('/api/stream/:id', async (req, res) => {
                 quality: qualityMatch ? qualityMatch[1].toUpperCase() : 'HD',
                 size: sizeLabel,
                 url: videoUrl
-              }]
+              }],
+              referer: 'https://movieboxonline.net/'
             };
           }
         }
@@ -719,7 +906,9 @@ app.all('/api/stream/:id', async (req, res) => {
         const dp = item.dp;
         const titleClean = item.title ? item.title.trim() : 'Video';
         const na = Buffer.from(titleClean).toString('base64');
-        const res = await resolveWatchboxStream(targetId, targetSe, targetEp, dp, na, clientIp);
+        const subjectid = item.subjectid || targetId;
+        const releaseYear = (item.release_date && item.release_date.match(/\d{4}/)) ? item.release_date.match(/\d{4}/)[0] : '';
+        const res = await resolveWatchboxStream(targetId, subjectid, targetSe, targetEp, dp, na, releaseYear, item.tm_id || '', clientIp);
         if (res && res.videoUrl) {
           if (isUrlExpired(res.videoUrl)) {
             throw new Error('Watchbox resolved link is expired');
@@ -735,7 +924,7 @@ app.all('/api/stream/:id', async (req, res) => {
       resolveTasks.push((async () => {
         const embedItem = item.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
         if (embedItem) {
-          const res = await resolveEmbedJsonStream(embedItem, clientIp);
+          const res = await resolveEmbedJsonStream(embedItem, targetId, item.subjectid || targetId, clientIp);
           if (res && res.videoUrl) {
             if (isUrlExpired(res.videoUrl)) {
               throw new Error('EmbedJSON resolved link is expired');
@@ -749,7 +938,7 @@ app.all('/api/stream/:id', async (req, res) => {
                 url: res.videoUrl
               }];
             }
-            return { videoUrl: res.videoUrl, qualities: qList };
+            return { videoUrl: res.videoUrl, qualities: qList, referer: res.referer || REFERER_URL };
           }
         }
         throw new Error('EmbedJSON resolution failed');
@@ -762,6 +951,7 @@ app.all('/api/stream/:id', async (req, res) => {
         const fastestSuccessfulResult = await Promise.any(resolveTasks);
         resolvedVideoUrl = fastestSuccessfulResult.videoUrl;
         resolvedQualities = fastestSuccessfulResult.qualities || [];
+        resolvedReferer = fastestSuccessfulResult.referer || REFERER_URL;
       } catch (err) {
         console.log('⚠️ Parallel stream resolution tasks failed. Trying sequential recovery fallback.');
       }
@@ -786,7 +976,9 @@ app.all('/api/stream/:id', async (req, res) => {
             if (altResults.length > 0) {
               const altItemMeta = altResults[0];
 
-              if (altItemMeta.embed) {
+              const isAltTv = altItemMeta.media_type === 'tv' || (Array.isArray(altItemMeta.season) && altItemMeta.season.length > 0);
+              
+              if (altItemMeta.embed && !isAltTv) {
                 const rawEmbedUrl = altItemMeta.embed;
                 const urlParamMatch = rawEmbedUrl.match(/url=([^&]+)/);
                 const sParamMatch = rawEmbedUrl.match(/[?&]s=([^&]+)/);
@@ -810,20 +1002,24 @@ app.all('/api/stream/:id', async (req, res) => {
 
               if (!resolvedVideoUrl && altItemMeta.dp) {
                 const altNa = Buffer.from(altItemMeta.title ? altItemMeta.title.trim() : 'Video').toString('base64');
-                const watchboxResult = await resolveWatchboxStream(altItem.id, targetSe, targetEp, altItemMeta.dp, altNa, clientIp);
+                const releaseYear = (altItemMeta.release_date && altItemMeta.release_date.match(/\d{4}/)) ? altItemMeta.release_date.match(/\d{4}/)[0] : '';
+                const watchboxResult = await resolveWatchboxStream(altItem.id, targetSe, targetEp, altItemMeta.dp, altNa, releaseYear, altItemMeta.tm_id || '', clientIp);
                 if (watchboxResult) {
                   resolvedVideoUrl = watchboxResult.videoUrl;
                   resolvedQualities = watchboxResult.qualities || [];
+                  resolvedReferer = watchboxResult.referer || REFERER_URL;
                 }
               }
 
               if (!resolvedVideoUrl && altItemMeta.embed_json && Array.isArray(altItemMeta.embed_json) && altItemMeta.embed_json.length > 0) {
                 const altEmbedItem = altItemMeta.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
                 if (altEmbedItem) {
-                  const embedJsonResult = await resolveEmbedJsonStream(altEmbedItem, clientIp);
-                  if (embedJsonResult) {
+                  console.log(`[Fetcher] Found exact embed_json match in alternative result (ID: ${altItem.id}) for S${targetSe}E${targetEp}`);
+                  const embedJsonResult = await resolveEmbedJsonStream(altEmbedItem, altItem.id, altItem.subjectid || altItem.id, clientIp);
+                  if (embedJsonResult && embedJsonResult.videoUrl) {
                     resolvedVideoUrl = embedJsonResult.videoUrl;
                     resolvedQualities = embedJsonResult.qualities || [];
+                    resolvedReferer = embedJsonResult.referer || REFERER_URL;
                     if (resolvedQualities.length === 0 && resolvedVideoUrl) {
                       const qualityMatch = (altEmbedItem.name + resolvedVideoUrl).match(/(\d{3,4}p)/i);
                       resolvedQualities = [{
@@ -860,18 +1056,22 @@ app.all('/api/stream/:id', async (req, res) => {
       throw new Error('Failed to resolve stream link on any host provider.');
     }
 
-    const streamResult = {
+    const resolvedData = {
       videoUrl: resolvedVideoUrl,
       qualities: resolvedQualities,
       audioUrl: null,
-      referer: REFERER_URL
+      referer: resolvedReferer
     };
 
     // ✅ Cache the resolved stream only if cache TTL is enabled (greater than 0)
     if (cacheTtl > 0) {
-      streamCache.set(cacheKey, streamResult);
+      streamCache.set(cacheKey, resolvedData);
     }
     console.log(`🔥 Resolved final streaming file: ${resolvedVideoUrl}`);
+    return resolvedData; // deduplicator closure return
+
+    }); // ← deduplicator.execute() end: sirf 1 user Netmirror tak gaya, baaki ne result share kiya!
+
     res.setHeader('X-Cache-Status', 'MISS');
     res.json(streamResult);
   } catch (error) {
@@ -943,13 +1143,16 @@ app.all('/api/download-qualities/:id', async (req, res) => {
     }
 
     let qualities = [];
+    let resolvedReferer = REFERER_URL;
 
     // Strategy A: Watchbox (dp field) — scrape popup-window dl-item entries
     if (item.dp) {
       const dp = item.dp;
       const titleClean = item.title ? item.title.trim() : 'Video';
       const na = Buffer.from(titleClean).toString('base64');
-      qualities = await extractWatchboxQualities(targetId, targetSe, targetEp, dp, na, clientIp);
+      const subjectid = item.subjectid || targetId;
+      const releaseYear = (item.release_date && item.release_date.match(/\d{4}/)) ? item.release_date.match(/\d{4}/)[0] : '';
+      qualities = await extractWatchboxQualities(targetId, subjectid, targetSe, targetEp, dp, na, releaseYear, item.tm_id || '', clientIp);
     }
 
     // Strategy B: Embed / drivehub-style — single quality from s= param
@@ -979,9 +1182,11 @@ app.all('/api/download-qualities/:id', async (req, res) => {
     // Strategy C: embed_json
     if (qualities.length === 0 && item.embed_json && Array.isArray(item.embed_json) && item.embed_json.length > 0) {
       const targetItem = item.embed_json.find(x => Number(x.se) === Number(targetSe) && Number(x.ep) === Number(targetEp));
-      if (targetItem) {
-        const embedJsonResult = await resolveEmbedJsonStream(targetItem, clientIp);
-        if (embedJsonResult) {
+      if (targetItem && targetItem.name) {
+        // From embed_json
+        const embedJsonResult = await resolveEmbedJsonStream(targetItem, targetId, item.subjectid || targetId, clientIp);
+        if (embedJsonResult && embedJsonResult.videoUrl) {
+          resolvedReferer = embedJsonResult.referer || REFERER_URL;
           if (embedJsonResult.qualities && embedJsonResult.qualities.length > 0) {
             qualities = embedJsonResult.qualities;
           } else if (embedJsonResult.videoUrl) {
@@ -1003,7 +1208,7 @@ app.all('/api/download-qualities/:id', async (req, res) => {
     }
 
     console.log(`✅ Found ${qualities.length} quality option(s) for ID ${id}:`, qualities.map(q => `${q.quality} ${q.size}`).join(', '));
-    res.json({ qualities, referer: REFERER_URL });
+    res.json({ qualities, referer: resolvedReferer });
   } catch (error) {
     console.error(`Error fetching download qualities for ID ${id}:`, error.message);
     res.status(500).json({ error: 'Failed to fetch download qualities.' });
@@ -1012,8 +1217,9 @@ app.all('/api/download-qualities/:id', async (req, res) => {
 
 /**
  * Extracts download quality options from watchbox player HTML by querying all domains concurrently.
+ * CRITICAL FIX: id=subjectid in URL, nid=movieId, signature uses movieId:serverTime format.
  */
-async function extractWatchboxQualities(id, se, ep, dp, na, clientIp = null) {
+async function extractWatchboxQualities(movieId, subjectid, se, ep, dp, na, releaseYear, tmId, clientIp = null) {
   const WATCHBOX_DOMAINS = [
     'bet.watch21.shop',
     'play.watch21.shop',
@@ -1024,38 +1230,70 @@ async function extractWatchboxQualities(id, se, ep, dp, na, clientIp = null) {
     'speed.watch22.shop',
     'test.watch22.shop'
   ];
-  const netmirrorReferer = 'https://netmirror.global/';
+  const netmirrorReferer = 'https://netmirror.center/';
+
+  // Fetch SERVER_TIME from the movie page
+  let pageServerTime = null;
+  try {
+    const pageRes = await axios.get(`https://netmirror.center/movie/${movieId}/`, {
+      headers: getHeaders(netmirrorReferer, clientIp),
+      timeout: 5000
+    });
+    const stMatch = pageRes.data.match(/window\.SERVER_TIME\s*=\s*(\d+)/);
+    if (stMatch) pageServerTime = stMatch[1];
+  } catch (e) { /* ignore */ }
+
+  const makeSignature = (ts) => crypto.createHmac('sha256', HM_SECRET).update(`${movieId}:${ts}`).digest('hex');
 
   const promises = WATCHBOX_DOMAINS.map(async (domain) => {
-    const baseUrl = `https://${domain}/play/watchbox.php?id=${id}&se=${se}&ep=${ep}&dp=${dp}&na=${encodeURIComponent(na)}&exten=1`;
-    const dummyRes = await axios.get(`${baseUrl}&ts=0&sig=0`, {
-      headers: getHeaders(netmirrorReferer, clientIp),
-      timeout: 6000
-    });
+    const seVal = se || '0';
+    const epVal = ep || '0';
+    const watchboxBaseUrl = `https://${domain}/play/watchbox.php?id=${subjectid}&se=${seVal}&ep=${epVal}&dp=${encodeURIComponent(dp)}&na=${encodeURIComponent(na)}&year=${releaseYear}&tm_id=${tmId}&exten=true&nid=${movieId}&tv=&token=`;
 
-    const timeMatch = dummyRes.data.match(/Time not Found\.<br><br>(\d+)/);
-    if (!timeMatch) throw new Error(`[${domain}] No time challenge`);
+    let ts = pageServerTime;
+    let signature;
 
-    const serverTime = timeMatch[1];
-    const signature = crypto.createHmac('sha256', HM_SECRET).update(String(serverTime)).digest('hex');
-    const authRes = await axios.get(`${baseUrl}&ts=${serverTime}&sig=${signature}`, {
+    if (ts) {
+      signature = makeSignature(ts);
+    } else {
+      const dummyRes = await axios.get(`${watchboxBaseUrl}&ts=0&sig=0`, {
+        headers: getHeaders(netmirrorReferer, clientIp),
+        timeout: 6000
+      });
+      const timeMatch = dummyRes.data.match(/Time not Found\.<br><br>(\d+)/);
+      if (!timeMatch) {
+        console.error(`[Watchbox ${domain}] No time challenge. Body preview:`, dummyRes.data.slice(0, 100).replace(/\n/g, ' '));
+        throw new Error(`Domain ${domain}: No time challenge received`);
+      }
+      ts = timeMatch[1];
+      signature = makeSignature(ts);
+      console.log(`[Watchbox ${domain}] Using fallback ts=${ts}, sig=${signature}`);
+    }
+
+    const authRes = await axios.get(`${watchboxBaseUrl}&ts=${ts}&sig=${signature}`, {
       headers: getHeaders(netmirrorReferer, clientIp),
-      timeout: 6000
+      timeout: 8000
     });
     const html = authRes.data;
 
     if (html.includes('Server Buzy') || html.includes('Not Found. or Come from listed Website.')) {
-      throw new Error(`[${domain}] Server busy`);
+      console.error(`[Watchbox ${domain}] Server returned busy/not found.`);
+      throw new Error(`[Watchbox ${domain}] Server busy`);
     }
 
     const parsed = parseWatchboxQualities(html);
-    if (parsed.length === 0) throw new Error(`[${domain}] No qualities in HTML`);
+    if (parsed.length === 0) {
+      console.error(`[Watchbox ${domain}] No qualities in HTML. HTML preview:`, html.slice(0, 100).replace(/\n/g, ' '));
+      throw new Error(`[Watchbox ${domain}] No qualities in HTML`);
+    }
+    console.log(`[Watchbox ${domain}] Found ${parsed.length} qualities.`);
     return parsed;
   });
 
   try {
     return await Promise.any(promises);
-  } catch (_) {
+  } catch (aggregateError) {
+    console.error('❌ All concurrent watchbox quality extractors failed.');
     return [];
   }
 }
@@ -1122,9 +1360,14 @@ async function extractDirectVideoLink(hostUrl) {
 }
 
 /**
- * Syncs time and generates dynamic HMAC signatures to unlock watchbox player streams
+ * Syncs time and generates dynamic HMAC signatures to unlock watchbox player streams.
+ * CRITICAL FIX: 
+ *   - id parameter in URL = subjectid (content provider's internal ID)
+ *   - nid parameter in URL = movieId (NetMirror's database ID)  
+ *   - Timestamp = window.SERVER_TIME from the NetMirror movie page
+ *   - Signature = HmacSHA256(movieId + ':' + timestamp, "net###@@sss")
  */
-async function resolveWatchboxStream(id, se, ep, dp, na, clientIp = null) {
+async function resolveWatchboxStream(movieId, subjectid, se, ep, dp, na, releaseYear, tmId, clientIp = null) {
   const WATCHBOX_DOMAINS = [
     'bet.watch21.shop',
     'play.watch21.shop',
@@ -1135,39 +1378,63 @@ async function resolveWatchboxStream(id, se, ep, dp, na, clientIp = null) {
     'speed.watch22.shop',
     'test.watch22.shop'
   ];
-  const netmirrorReferer = 'https://netmirror.global/';
+  const netmirrorReferer = 'https://netmirror.center/';
 
-  console.log(`⚡ Concurrently resolving watchbox streams across ${WATCHBOX_DOMAINS.length} domains...`);
+  // Fetch SERVER_TIME from the NetMirror movie page (same as browser does via window.SERVER_TIME)
+  let pageServerTime = null;
+  try {
+    const pageRes = await axios.get(`https://netmirror.center/movie/${movieId}/`, {
+      headers: getHeaders(netmirrorReferer, clientIp),
+      timeout: 5000
+    });
+    const stMatch = pageRes.data.match(/window\.SERVER_TIME\s*=\s*(\d+)/);
+    if (stMatch) pageServerTime = stMatch[1];
+  } catch (e) {
+    console.warn('[Watchbox] Could not fetch SERVER_TIME from page:', e.message);
+  }
+
+  // Signature: HmacSHA256(movieId + ':' + timestamp, secret) — as per JS bundle $6() function
+  const makeSignature = (ts) => crypto.createHmac('sha256', HM_SECRET).update(`${movieId}:${ts}`).digest('hex');
+
+  console.log(`⚡ Concurrently resolving watchbox streams across ${WATCHBOX_DOMAINS.length} domains (subjectid=${subjectid}, nid=${movieId})...`);
 
   const promises = WATCHBOX_DOMAINS.map(async (domain) => {
     try {
-      const watchboxBaseUrl = `https://${domain}/play/watchbox.php?id=${id}&se=${se}&ep=${ep}&dp=${dp}&na=${encodeURIComponent(na)}&exten=1`;
-      const dummyUrl = `${watchboxBaseUrl}&ts=0&sig=0`;
+      // id=subjectid (content provider ID), nid=movieId (NetMirror ID) — CRITICAL
+      // Use browser-exact format: exten=true (not exten=1), se=0/ep=0 for movies (not empty)
+      // This matches the cache key watchbox uses when browser requests it — avoids stale cached CDN URLs
+      const seVal = se || '0';
+      const epVal = ep || '0';
+      const watchboxBaseUrl = `https://${domain}/play/watchbox.php?id=${subjectid}&se=${seVal}&ep=${epVal}&dp=${encodeURIComponent(dp)}&na=${encodeURIComponent(na)}&year=${releaseYear}&tm_id=${tmId}&exten=true&nid=${movieId}&tv=&token=`;
 
-      const dummyRes = await axios.get(dummyUrl, {
-        headers: getHeaders(netmirrorReferer, clientIp),
-        timeout: 6000
-      });
+      let ts = pageServerTime;
+      let signature;
 
-      let serverTime = null;
-      const timeMatch = dummyRes.data.match(/Time not Found\.<br><br>(\d+)/);
-      let htmlContent = '';
-
-      if (timeMatch) {
-        serverTime = timeMatch[1];
-        const signature = crypto.createHmac('sha256', HM_SECRET).update(String(serverTime)).digest('hex');
-        const authUrl = `${watchboxBaseUrl}&ts=${serverTime}&sig=${signature}`;
-
-        const authRes = await axios.get(authUrl, {
+      if (ts) {
+        // Use page SERVER_TIME (preferred — matches browser behavior)
+        signature = makeSignature(ts);
+      } else {
+        // Fallback: get time challenge from watchbox.php itself
+        const dummyRes = await axios.get(`${watchboxBaseUrl}&ts=0&sig=0`, {
           headers: getHeaders(netmirrorReferer, clientIp),
           timeout: 6000
         });
-        htmlContent = authRes.data;
-      } else {
-        htmlContent = dummyRes.data;
+        const timeMatch = dummyRes.data.match(/Time not Found\.<br><br>(\d+)/);
+        if (!timeMatch) throw new Error(`Domain ${domain}: No time challenge received`);
+        ts = timeMatch[1];
+        signature = makeSignature(ts);
       }
 
+      const authUrl = `${watchboxBaseUrl}&ts=${ts}&sig=${signature}`;
+      // console.log(`[Watchbox ${domain}] Fetching authUrl: ${authUrl.replace(/dp=[^&]+/, 'dp=HIDDEN')}`);
+      const authRes = await axios.get(authUrl, {
+        headers: { ...getHeaders(netmirrorReferer, clientIp), 'Cache-Control': 'no-cache, no-store', 'Pragma': 'no-cache' },
+        timeout: 8000
+      });
+      const htmlContent = authRes.data;
+
       if (htmlContent.includes('Server Buzy') || htmlContent.includes('Not Found. or Come from listed Website.')) {
+        console.error(`[Watchbox ${domain}] HTML contained Server Buzy / Not Found`);
         throw new Error(`Domain ${domain} returned busy/not found.`);
       }
 
@@ -1175,10 +1442,13 @@ async function resolveWatchboxStream(id, se, ep, dp, na, clientIp = null) {
       if (resolvedUrl) {
         console.log(`[Watchbox] Fast resolution SUCCESS on domain: ${domain}`);
         const parsedQualities = parseWatchboxQualities(htmlContent);
-        return { videoUrl: resolvedUrl, qualities: parsedQualities };
+        const finalReferer = resolvedUrl.includes('proxy') ? `https://${domain}/` : 'https://movieboxonline.net/';
+        return { videoUrl: resolvedUrl, qualities: parsedQualities, referer: finalReferer };
       }
+      console.error(`[Watchbox ${domain}] Failed parsing HTML for resolvedUrl. HTML start:`, htmlContent.slice(0, 100).replace(/\n/g, ' '));
       throw new Error(`Domain ${domain} failed parsing HTML.`);
     } catch (err) {
+      console.error(`[Watchbox ${domain}] Exception:`, err.message);
       throw err;
     }
   });
@@ -1187,15 +1457,16 @@ async function resolveWatchboxStream(id, se, ep, dp, na, clientIp = null) {
     const result = await Promise.any(promises);
     return result;
   } catch (aggregateError) {
-    console.log('❌ All concurrent watchbox servers failed resolving links.');
+    console.error('❌ All concurrent watchbox servers failed resolving streams.');
     return null;
   }
 }
 
+
 /**
  * Resolves streams using the embed_json configuration (concurrently across watchbox servers)
  */
-async function resolveEmbedJsonStream(embedItem, clientIp = null) {
+async function resolveEmbedJsonStream(embedItem, movieId, subjectid, clientIp = null) {
   const WATCHBOX_DOMAINS = [
     'bet.watch21.shop',
     'play.watch21.shop',
@@ -1206,13 +1477,13 @@ async function resolveEmbedJsonStream(embedItem, clientIp = null) {
     'speed.watch22.shop',
     'test.watch22.shop'
   ];
-  const netmirrorReferer = 'https://netmirror.global/';
+  const netmirrorReferer = REFERER_URL;
 
   console.log(`⚡ Concurrently resolving embed_json stream for name=${embedItem.name}...`);
 
   const promises = WATCHBOX_DOMAINS.map(async (domain) => {
     try {
-      const watchboxBaseUrl = `https://${domain}/play/${embedItem.name}.php?url=${encodeURIComponent(embedItem.url)}&size=${encodeURIComponent(embedItem.size || '')}&se=${embedItem.se}&ep=${embedItem.ep}&name=${encodeURIComponent(embedItem.name)}&exten=1`;
+      const watchboxBaseUrl = `https://${domain}/play/${embedItem.name}.php?url=${encodeURIComponent(embedItem.url)}&size=${encodeURIComponent(embedItem.size || '')}&se=${embedItem.se}&ep=${embedItem.ep}&name=${encodeURIComponent(embedItem.name)}&id=${subjectid}&nid=${movieId}&exten=1`;
       const dummyUrl = `${watchboxBaseUrl}&ts=0&sig=0`;
 
       const dummyRes = await axios.get(dummyUrl, {
@@ -1226,7 +1497,7 @@ async function resolveEmbedJsonStream(embedItem, clientIp = null) {
 
       if (timeMatch) {
         serverTime = timeMatch[1];
-        const signature = crypto.createHmac('sha256', HM_SECRET).update(String(serverTime)).digest('hex');
+        const signature = crypto.createHmac('sha256', HM_SECRET).update(`${movieId}:${serverTime}`).digest('hex');
         const authUrl = `${watchboxBaseUrl}&ts=${serverTime}&sig=${signature}`;
 
         const authRes = await axios.get(authUrl, {
@@ -1247,7 +1518,8 @@ async function resolveEmbedJsonStream(embedItem, clientIp = null) {
       if (resolvedUrl) {
         console.log(`[EmbedJson] Fast resolution SUCCESS on domain: ${domain}`);
         const parsedQualities = parseWatchboxQualities(htmlContent);
-        return { videoUrl: resolvedUrl, qualities: parsedQualities };
+        const finalReferer = resolvedUrl.includes('proxy') ? `https://${domain}/` : 'https://movieboxonline.net/';
+        return { videoUrl: resolvedUrl, qualities: parsedQualities, referer: finalReferer };
       }
       throw new Error(`Domain ${domain} failed parsing HTML.`);
     } catch (err) {
@@ -1279,6 +1551,12 @@ function parseWatchboxHtml(html) {
 
   const r2Match = html.match(/(https:\/\/[a-zA-Z0-9.-]+\.r2\.dev\/[^\'\"]+\?[^\'\"]+)/);
   if (r2Match) return r2Match[1];
+
+  const proxyMatch = html.match(/(https:\/\/[a-zA-Z0-9.-]+proxy[a-zA-Z0-9.-]*\/\?url=[^\'\"]+)/);
+  if (proxyMatch) return proxyMatch[1];
+
+  const playUrlMatch = html.match(/play_url\(['"](https:\/\/[^\'"]+)['"]\)/);
+  if (playUrlMatch && !playUrlMatch[1].includes('notfound')) return playUrlMatch[1];
 
   return null;
 }
@@ -1474,6 +1752,22 @@ setInterval(() => {
   searchCache.cleanupExpired();
 }, 60000);
 
+// --- Admin Scraper Routes ---
+app.get('/api/admin/force-sync-catalog', (req, res) => {
+  if (!app.locals.scraper) return res.status(500).json({ error: 'Scraper not initialized' });
+  
+  // Start async, don't await so request doesn't timeout
+  app.locals.scraper.syncCatalog();
+  res.json({ message: 'Catalog sync started in background. Check terminal logs for progress.' });
+});
+
+app.get('/api/admin/force-sync-links', (req, res) => {
+  if (!app.locals.scraper) return res.status(500).json({ error: 'Scraper not initialized' });
+  
+  app.locals.scraper.syncVideoLinks();
+  res.json({ message: 'Video links sync started in background. Check terminal logs for progress.' });
+});
+
 // Server Listen
 app.listen(PORT, '0.0.0.0', async () => {
   console.log(`\n🚀 Production Scraper Server active on http://0.0.0.0:${PORT}/api`);
@@ -1483,6 +1777,14 @@ app.listen(PORT, '0.0.0.0', async () => {
 
   // Start Mirror discovery
   await mirrorManager.start();
+
+  // Initialize and start automated scraper
+  const scraper = new ScraperService(
+    (endpoint) => fetchFromNetmirrorWithRetry(endpoint),
+    (endpoint) => fetchFromNetmirrorWithRetry(endpoint)
+  );
+  scraper.startCronJob();
+  app.locals.scraper = scraper;
 
   // Background Warmup
   console.log('[Warmup] Initializing background cache pre-fetch...');

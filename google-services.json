@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "285122171820",
+    "project_id": "contractguard-ai-1b3db",
+    "storage_bucket": "contractguard-ai-1b3db.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:285122171820:android:b47628e766158a4e23a009",
+        "android_client_info": {
+          "package_name": "com.cinestream.tayyabali77865"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "285122171820-pkno10j8uk0i9bml2fg2id68spgt6j7s.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCa-Wty3R4W2UxiMts9ZT-_ZDeh-7TC_mc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "285122171820-pkno10j8uk0i9bml2fg2id68spgt6j7s.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

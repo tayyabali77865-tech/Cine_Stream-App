@@ -12,9 +12,16 @@ import { apiService, getCachedImageUri } from '../services/apiService';
 
 const SKELETON_DATA = Array.from({ length: 4 }, (_, i) => ({ id: `skeleton-${i}` }));
 
-function detectLanguage(title) {
-  if (!title) return 'Original';
-  const LANGUAGES = ['Hindi', 'English', 'Tamil', 'Telugu', 'Korean', 'Japanese', 'Malayalam', 'Bengali', 'Kannada', 'Punjabi', 'Spanish', 'French', 'Marathi', 'Arabic', 'Urdu', 'Chinese'];
+const LANGUAGES = ['Hindi', 'English', 'Tamil', 'Telugu', 'Korean', 'Japanese', 'Malayalam', 'Bengali', 'Kannada', 'Punjabi', 'Spanish', 'French', 'Marathi', 'Arabic', 'Urdu', 'Chinese'];
+
+function detectLanguage(item) {
+  const title = typeof item === 'string' ? item : (item?.title || '');
+  if (!title) {
+    if (item?.badge && item.badge.trim() !== '') return item.badge.trim();
+    if (item?.country && item.country.trim() !== '') return item.country.trim();
+    return null;
+  }
+
   const bracketMatch = title.match(/[\[\()]([a-zA-Z\s\-]+)[\]\)]\s*$/);
   if (bracketMatch) {
     const candidate = bracketMatch[1].trim();
@@ -25,11 +32,21 @@ function detectLanguage(title) {
       }
     }
   }
+
   const titleLower = title.toLowerCase();
   for (const lang of LANGUAGES) {
     if (titleLower.includes(lang.toLowerCase())) return lang;
   }
-  return 'Original';
+  
+  if (typeof item === 'object') {
+    if (item.badge && item.badge.trim() !== '') {
+      return item.badge.trim();
+    }
+    if (item.country && item.country.trim() !== '') {
+      return item.country.trim();
+    }
+  }
+  return null;
 }
 
 function getDisplayBadge(item) {
@@ -40,7 +57,13 @@ function getDisplayBadge(item) {
   return 'Movie';
 }
 
-const MediaCardSmall = memo(({ posterUri, title, type, onPress }) => (
+const MediaCardSmall = memo(({ item, onPress }) => {
+  const badgeType = getDisplayBadge(item);
+  const langBadge = detectLanguage(item);
+  const [posterUri, setPosterUri] = React.useState(
+    getCachedImageUri(item.poster || item.backdrop_path || item.poster_path)
+  );
+  return (
   <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={onPress}>
     <View style={styles.posterWrapper}>
       <ExpoImage
@@ -48,21 +71,38 @@ const MediaCardSmall = memo(({ posterUri, title, type, onPress }) => (
         style={styles.poster}
         contentFit="cover"
         transition={150}
+        priority="high"
+        cachePolicy="memory-disk"
+        recyclingKey={item.poster}
+        onError={() => {
+          // If wsrv.nl proxy fails, try original URL directly
+          const origUrl = item.poster || item.backdrop_path || item.poster_path;
+          if (origUrl && posterUri !== origUrl) {
+            setPosterUri(origUrl);
+          }
+        }}
       />
       <View style={styles.badgeContainer}>
-        <Text style={styles.badgeText}>{type}</Text>
+        <Text style={styles.badgeText}>{badgeType}</Text>
       </View>
-      <View style={styles.langBadgeContainer}>
-        <Text style={styles.langBadgeText}>{detectLanguage(title)}</Text>
-      </View>
+      {langBadge && (
+        <View style={styles.langBadgeContainer}>
+          <Text style={styles.langBadgeText}>{langBadge}</Text>
+        </View>
+      )}
     </View>
-    <Text style={styles.movieTitle} numberOfLines={1}>{title}</Text>
+    <Text style={styles.movieTitle} numberOfLines={1}>{item.title}</Text>
   </TouchableOpacity>
-));
+)});
 
-export default function HomeSection({ filter, category, navigation }) {
+export default function HomeSection({ title, filter, category, navigation, fetchSimilarTitle, excludeId, strictMatchTitle, hideViewAll }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const getBaseTitle = (t) => {
+    if (!t) return '';
+    return t.replace(/\[.*?\]/g, '').replace(/\bS\d+(-\bS\d+)?\b/gi, '').trim();
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -72,19 +112,31 @@ export default function HomeSection({ filter, category, navigation }) {
       let currentPage = 0;
       let reachedEnd = false;
       const seen = new Set();
+      const seenTitles = new Set();
+      if (excludeId) seen.add(String(excludeId)); // Ensure we never show the excluded item
       
       // Fetch up to 4 pages to accumulate 10 valid items
       while (accumulatedData.length < 10 && currentPage < 4 && !reachedEnd) {
-        const rawData = await apiService.getTrendingMedia(currentPage, filter, category);
+        let rawData;
+        if (fetchSimilarTitle) {
+          rawData = await apiService.getSimilarMedia(fetchSimilarTitle, currentPage);
+        } else {
+          rawData = await apiService.getTrendingMedia(currentPage, filter, category);
+        }
+        
         if (!rawData || rawData.length === 0) {
           reachedEnd = true;
           break;
         }
         
         let filteredData = rawData;
-        if (category !== 'All') {
+        
+        if (strictMatchTitle) {
+          const strictLower = strictMatchTitle.toLowerCase();
+          filteredData = filteredData.filter(item => getBaseTitle(item.title).toLowerCase() === strictLower);
+        } else if (category !== 'All') {
           filteredData = filteredData.filter(item => {
-            const typeLower = (item.type || '').toLowerCase();
+            const typeLower = (item.type || item.media_type || '').toLowerCase();
             if (category === 'Movies') return typeLower === 'movie' || typeLower === 'movie/';
             if (category === 'Series') return typeLower === 'tv show' || typeLower === 'tv' || typeLower === 'series';
             return true;
@@ -92,12 +144,28 @@ export default function HomeSection({ filter, category, navigation }) {
         }
         
         const uniqueData = filteredData.filter(item => {
-          if (!item.id || seen.has(item.id)) return false;
-          seen.add(item.id);
+          if (!item.id || !item.title || seen.has(String(item.id))) return false;
+          
+          const titleLower = item.title.trim().toLowerCase();
+          if (seenTitles.has(titleLower)) return false; // Filter 100% duplicate exact titles
+          
+          seen.add(String(item.id));
+          seenTitles.add(titleLower);
           return true;
         });
 
-        accumulatedData = [...accumulatedData, ...uniqueData];
+        let newAccumulated = [...accumulatedData, ...uniqueData];
+        
+        if (strictMatchTitle) {
+          // Sort Hindi first
+          newAccumulated.sort((a, b) => {
+            const aHindi = a.title.toLowerCase().includes('[hindi]') ? 1 : 0;
+            const bHindi = b.title.toLowerCase().includes('[hindi]') ? 1 : 0;
+            return bHindi - aHindi;
+          });
+        }
+        
+        accumulatedData = newAccumulated;
         currentPage++;
       }
 
@@ -118,13 +186,15 @@ export default function HomeSection({ filter, category, navigation }) {
   return (
     <View style={styles.sectionContainer}>
       <View style={styles.headerRow}>
-        <Text style={styles.sectionTitle}>{filter}</Text>
-        <TouchableOpacity
-          style={styles.viewAllBtn}
-          onPress={() => navigation.navigate('ViewAll', { filter, category })}
-        >
-          <Text style={styles.viewAllText}>View All</Text>
-        </TouchableOpacity>
+        <Text style={styles.sectionTitle}>{title || filter}</Text>
+        {!hideViewAll && (
+          <TouchableOpacity
+            style={styles.viewAllBtn}
+            onPress={() => navigation.navigate('ViewAll', { filter, category })}
+          >
+            <Text style={styles.viewAllText}>View All</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {loading ? (
@@ -140,9 +210,7 @@ export default function HomeSection({ filter, category, navigation }) {
           contentContainerStyle={styles.listContainer}
           renderItem={({ item }) => (
             <MediaCardSmall
-              posterUri={getCachedImageUri(item.poster)}
-              title={item.title}
-              type={getDisplayBadge(item)}
+              item={item}
               onPress={() => navigation.navigate('Details', { id: item.id })}
             />
           )}
@@ -171,7 +239,7 @@ const styles = StyleSheet.create({
   viewAllBtn: {
     paddingHorizontal: 12,
     paddingVertical: 4,
-    borderRadius: 4,
+    borderRadius: 20,
     backgroundColor: 'rgba(229, 9, 20, 0.1)',
   },
   viewAllText: {
