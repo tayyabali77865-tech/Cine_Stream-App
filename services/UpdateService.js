@@ -19,19 +19,21 @@ export const checkAndPromptUpdate = async (apkUrl) => {
       return;
     }
 
-    console.log('[UpdateService] New update link detected. Downloading in background...');
+    ToastAndroid.show("Background update check started...", ToastAndroid.SHORT);
+    console.log('[UpdateService] New update link detected. Downloading in background silently...');
     const fileUri = `${FileSystem.documentDirectory}cinestream-update.apk`;
 
     // Download the APK
     const downloadRes = await FileSystem.downloadAsync(apkUrl, fileUri);
     
     if (downloadRes.status === 200) {
+      ToastAndroid.show("Download complete. Launching installer...", ToastAndroid.SHORT);
       console.log('[UpdateService] Download complete. Prompting installation.');
       
-      // Mark this URL as prompted so we don't download it again if they decline
+      // Mark this URL as prompted so we don't download it again if they decline the system prompt
       await AsyncStorage.setItem(LAST_UPDATE_KEY, apkUrl);
 
-      // Launch the Android package installer
+      // Launch the Android package installer directly
       try {
         const contentUri = await FileSystem.getContentUriAsync(downloadRes.uri);
         await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
@@ -40,6 +42,7 @@ export const checkAndPromptUpdate = async (apkUrl) => {
           type: 'application/vnd.android.package-archive',
         });
       } catch (intentErr) {
+        ToastAndroid.show(`Installer Error: ${intentErr.message}`, ToastAndroid.LONG);
         // Fallback for older Expo SDKs if getContentUriAsync is not supported
         await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
           data: downloadRes.uri,
@@ -48,9 +51,11 @@ export const checkAndPromptUpdate = async (apkUrl) => {
         });
       }
     } else {
+      ToastAndroid.show(`Download failed. HTTP ${downloadRes.status}`, ToastAndroid.LONG);
       console.warn('[UpdateService] Failed to download APK. HTTP Status:', downloadRes.status);
     }
   } catch (error) {
+    ToastAndroid.show(`Update Error: ${error.message}`, ToastAndroid.LONG);
     console.error('[UpdateService] Error checking/downloading update:', error.message);
   }
 };
