@@ -44,6 +44,38 @@ export function SmartlinkAdProvider({ children }) {
   
   // Load saved timers on mount
   useEffect(() => {
+    // Check for OTA Updates silently on startup
+    const checkUpdates = async () => {
+      try {
+        const AD_CONFIG_URLS = [
+          'https://cinestream-app-production-640b.up.railway.app/api/ad-config',
+          'http://192.168.0.40:8000/api/ad-config',
+          'http://10.0.2.2:8000/api/ad-config',
+        ];
+        for (const url of AD_CONFIG_URLS) {
+          try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 8000);
+            const res = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeout);
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.appUpdateLink) {
+                const { checkAndPromptUpdate } = require('../services/UpdateService');
+                checkAndPromptUpdate(data.appUpdateLink);
+              }
+              break; // Stop checking other URLs if this one succeeds
+            }
+          } catch (err) {
+            // Try next
+          }
+        }
+      } catch (e) {
+        console.warn('OTA Check failed', e);
+      }
+    };
+    checkUpdates();
+
     AsyncStorage.multiGet([GLOBAL_TIMER_KEY, PLAYER_TIMER_KEY]).then((values) => {
       const gTimer = values.find(v => v[0] === GLOBAL_TIMER_KEY)?.[1];
       const pTimer = values.find(v => v[0] === PLAYER_TIMER_KEY)?.[1];
