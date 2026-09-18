@@ -41,13 +41,9 @@ export const getCachedImageUri = (url) => {
     return targetUrl.replace(/_V1_.*(\.jpg|\.png|\.webp)$/i, '_V1_SX300$1');
   }
 
-  // Aoneroom blocks proxying
-  if (targetUrl.includes('aoneroom.com')) {
-    return targetUrl;
-  }
-
-  // Use images.weserv.nl for the remaining unknown domains, with proper URL encoding and low quality for speed
-  return `https://images.weserv.nl/?url=${encodeURIComponent(targetUrl)}&w=300&q=60&output=webp&we`;
+  // Directly return the target URL for everything else to ensure they always load.
+  // External proxies (wsrv, photon, statically) have proven unreliable and cause missing images.
+  return targetUrl;
 };
 
 const API_FALLBACKS = [

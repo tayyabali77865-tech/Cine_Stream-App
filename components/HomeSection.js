@@ -71,7 +71,6 @@ const MediaCardSmall = memo(({ item, onPress }) => {
         style={styles.poster}
         contentFit="cover"
         transition={300}
-        placeholder={{ blurhash: "L02~$#000000fQfQfQfQfQfQfQfQ" }}
         priority="high"
         cachePolicy="memory-disk"
         recyclingKey={item.poster}
