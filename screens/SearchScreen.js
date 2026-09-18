@@ -574,9 +574,6 @@ export default function SearchScreen({ navigation }) {
             onFocus={() => {
               if (viewingResults) {
                 setViewingResults(false);
-                setHasSearched(false);
-                setSearchMediaList([]);
-                setDidYouMeanResults([]);
                 isTypingRef.current = true;
                 if (searchQueryRef.current.trim().length >= 2) {
                   fetchSuggestions(searchQueryRef.current);
@@ -670,6 +667,8 @@ export default function SearchScreen({ navigation }) {
           contentContainerStyle={styles.listContainer}
           renderItem={renderSkeletonItem}
           keyExtractor={item => item.id}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         />
       ) : (
         <FlatList
@@ -687,6 +686,8 @@ export default function SearchScreen({ navigation }) {
           onEndReachedThreshold={0.3}
           ListFooterComponent={<ListFooter loadingMore={loadingMore} />}
           extraData={loadingMore}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         />
       )}
     </View>

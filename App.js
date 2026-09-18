@@ -2,7 +2,7 @@ import 'react-native-gesture-handler';
 import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, StatusBar, Animated, ActivityIndicator, Image } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
+import { createStackNavigator, TransitionPresets } from '@react-navigation/stack';
 import { enableScreens } from 'react-native-screens';
 import HomeScreen from './screens/HomeScreen';
 import DetailsScreen from './screens/DetailsScreen';
@@ -98,7 +98,11 @@ export default function App() {
               <Stack.Screen
                 name="Search"
                 component={SearchScreen}
-                options={{ headerShown: false }}
+                options={{ 
+                  headerShown: false,
+                  ...TransitionPresets.ModalSlideFromBottomIOS,
+                  presentation: 'transparentModal',
+                }}
               />
               <Stack.Screen
                 name="ViewAll"

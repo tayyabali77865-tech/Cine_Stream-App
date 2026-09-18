@@ -159,7 +159,7 @@ function deduplicatedFetch(key, fetchFn) {
 
 // ─── Core Fetch Utilities ─────────────────────────────────────────────────────
 
-const fetchWithTimeout = async (url, opts = {}, timeout = 15000) => {
+const fetchWithTimeout = async (url, opts = {}, timeout = 30000) => {
   return Promise.race([
     fetch(url, opts),
     new Promise((_, reject) =>
@@ -174,7 +174,7 @@ const checkHealth = async (baseUrl) => {
   try {
     const res = await Promise.race([
       fetch(`${baseUrl}/health`),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000)) // 10 seconds timeout
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000)) // 15 seconds timeout
     ]);
     if (res.ok) return true;
     markUrlFailed(baseUrl);
@@ -201,7 +201,7 @@ async function customFetch(endpoint, options = {}) {
   // 1. Try activeBaseUrl first (skip if on cooldown)
   if (!isUrlOnCooldown(activeBaseUrl)) {
     try {
-      const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 15000);
+      const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 30000);
       
       // If server returns Gateway Error (502/503/504), consider it offline/dead and force fallback
       if ([502, 503, 504].includes(response.status)) {
@@ -240,7 +240,7 @@ async function customFetch(endpoint, options = {}) {
       const workingUrl = await Promise.any(scanPromises);
       activeBaseUrl = workingUrl;
       console.log(`🎯 Switched to: ${activeBaseUrl}`);
-      const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 15000);
+      const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 30000);
       
       if ([502, 503, 504].includes(response.status)) {
         throw new Error(`Server returned ${response.status} Bad Gateway/Unavailable`);
