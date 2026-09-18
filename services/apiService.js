@@ -46,14 +46,14 @@ export const getCachedImageUri = (url) => {
 };
 
 const API_FALLBACKS = [
+  deployedApiBaseUrl ? `${normalizeBaseUrl(deployedApiBaseUrl)}/api` : null,
+  'https://cinestream-app-production-640b.up.railway.app/api',
   `http://192.168.0.40:8000/api`,
   `http://${hostIP}:8000/api`,
   `http://10.0.2.2:8000/api`,
-  deployedApiBaseUrl ? `${normalizeBaseUrl(deployedApiBaseUrl)}/api` : null,
-  'https://cinestream-app-production-640b.up.railway.app/api',
 ].filter(Boolean);
 
-const preferredBaseUrl = API_FALLBACKS[0] || 'http://localhost:8000/api';
+const preferredBaseUrl = API_FALLBACKS[0];
 let activeBaseUrl = preferredBaseUrl;
 
 // ─── Netmirror Mirrors Manager (Client-side bypass) ───────────────────────────
