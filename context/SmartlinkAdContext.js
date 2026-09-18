@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, SafeAreaView, Platform, StatusBar } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WebView } from 'react-native-webview';
+import { checkAndPromptUpdate } from '../services/UpdateService';
 
 const SmartlinkAdContext = createContext(null);
 
@@ -61,7 +62,6 @@ export function SmartlinkAdProvider({ children }) {
             if (res.ok) {
               const data = await res.json();
               if (data && data.appUpdateLink) {
-                const { checkAndPromptUpdate } = require('../services/UpdateService');
                 checkAndPromptUpdate(data.appUpdateLink);
               }
               break; // Stop checking other URLs if this one succeeds

@@ -12,12 +12,6 @@ export const checkAndPromptUpdate = async (apkUrl) => {
   }
 
   try {
-    const lastPromptedUrl = await AsyncStorage.getItem(LAST_UPDATE_KEY);
-    if (lastPromptedUrl === apkUrl) {
-      // User already clicked 'Later' for this exact URL, skip silently.
-      return;
-    }
-
     const fileUri = `${FileSystem.documentDirectory}cinestream-update.apk`;
 
     // 1. Silent Background Download (No toasts, no interruptions)
