@@ -35,14 +35,20 @@ export const getCachedImageUri = (url) => {
     return targetUrl; // TMDB is fast enough and might block proxies, direct load
   }
 
+  // Natively resize IMDB (Amazon) images to avoid proxy blocks and save massive bandwidth
+  if (targetUrl.includes('m.media-amazon.com/images/')) {
+    // Replace anything after _V1_ with SX300 to get a 300px wide image directly from Amazon
+    return targetUrl.replace(/_V1_.*(\.jpg|\.png|\.webp)$/i, '_V1_SX300$1');
+  }
+
   // Aoneroom blocks wsrv.nl or fails proxying
   if (targetUrl.includes('aoneroom.com')) {
     return targetUrl;
   }
 
-  // Use Photon CDN (i0.wp.com) which is incredibly fast for first-time caching and resizing
+  // Use Statically CDN which is very fast and doesn't block IMDB/TMDB hotlinking like Photon sometimes does
   const strippedUrl = targetUrl.replace(/^https?:\/\//, '');
-  return `https://i0.wp.com/${strippedUrl}?w=300&strip=all`;
+  return `https://cdn.statically.io/img/${strippedUrl}?w=300&q=70`;
 };
 
 const API_FALLBACKS = [
