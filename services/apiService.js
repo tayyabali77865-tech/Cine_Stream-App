@@ -41,14 +41,13 @@ export const getCachedImageUri = (url) => {
     return targetUrl.replace(/_V1_.*(\.jpg|\.png|\.webp)$/i, '_V1_SX300$1');
   }
 
-  // Aoneroom blocks wsrv.nl or fails proxying
+  // Aoneroom blocks proxying
   if (targetUrl.includes('aoneroom.com')) {
     return targetUrl;
   }
 
-  // Use Statically CDN which is very fast and doesn't block IMDB/TMDB hotlinking like Photon sometimes does
-  const strippedUrl = targetUrl.replace(/^https?:\/\//, '');
-  return `https://cdn.statically.io/img/${strippedUrl}?w=300&q=70`;
+  // Use images.weserv.nl for the remaining unknown domains, with proper URL encoding and low quality for speed
+  return `https://images.weserv.nl/?url=${encodeURIComponent(targetUrl)}&w=300&q=60&output=webp&we`;
 };
 
 const API_FALLBACKS = [
