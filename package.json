@@ -31,6 +31,7 @@
     "expo-media-library": "~17.0.6",
     "expo-navigation-bar": "~4.0.9",
     "expo-screen-orientation": "~8.0.4",
+    "expo-splash-screen": "^57.0.9",
     "expo-status-bar": "~2.0.0",
     "expo-updates": "~0.27.5",
     "express": "^4.19.2",

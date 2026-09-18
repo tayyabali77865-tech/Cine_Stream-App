@@ -566,7 +566,7 @@ export default function SearchScreen({ navigation }) {
         <View style={styles.searchContainer}>
           <TextInput
             ref={searchInputRef}
-            placeholder="Search Movie, Series or Anime"
+            placeholder="Search"
             placeholderTextColor="#9CA3AF"
             value={searchQuery}
             onChangeText={handleSearch}
@@ -594,6 +594,17 @@ export default function SearchScreen({ navigation }) {
             </TouchableOpacity>
           )}
         </View>
+        <TouchableOpacity
+          style={styles.searchBtnIcon}
+          onPress={() => {
+            Keyboard.dismiss();
+            searchInputRef.current?.blur();
+            isTypingRef.current = false;
+            triggerSearch(searchQuery);
+          }}
+        >
+          <Ionicons name="search" size={20} color="#FFF" />
+        </TouchableOpacity>
       </View>
 
       {/* Suggestions Dropdown */}
@@ -744,6 +755,15 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 11,
     fontWeight: 'bold',
+  },
+  searchBtnIcon: {
+    width: 36,
+    height: 36,
+    marginLeft: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E50914',
+    borderRadius: 18,
   },
   suggestionsContainer: {
     position: 'absolute',

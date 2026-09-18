@@ -1,6 +1,8 @@
 import 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, StatusBar, Animated, ActivityIndicator, Image } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator, TransitionPresets } from '@react-navigation/stack';
 import { enableScreens } from 'react-native-screens';
@@ -13,6 +15,9 @@ import { SmartlinkAdProvider } from './context/SmartlinkAdContext';
 
 // Enable native screen containers
 enableScreens(true);
+
+// Keep the splash screen visible while we fetch resources
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const Stack = createStackNavigator();
 
@@ -34,6 +39,9 @@ export default function App() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Hide native splash screen and let our animated custom splash screen take over
+    SplashScreen.hideAsync().catch(() => {});
+
     // Fade in the logo and text
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -74,44 +82,46 @@ export default function App() {
           </Animated.View>
         </View>
       ) : (
-        <SmartlinkAdProvider>
-          <NavigationContainer>
-            <Stack.Navigator
-              initialRouteName="Home"
-              screenOptions={NAVIGATOR_SCREEN_OPTIONS}
-            >
-              <Stack.Screen
-                name="Home"
-                component={HomeScreen}
-                options={{ headerShown: false }}
-              />
-              <Stack.Screen
-                name="Details"
-                component={DetailsScreen}
-                options={{ title: 'Media Info' }}
-              />
-              <Stack.Screen
-                name="Player"
-                component={PlayerScreen}
-                options={{ headerShown: false }}
-              />
-              <Stack.Screen
-                name="Search"
-                component={SearchScreen}
-                options={{ 
-                  headerShown: false,
-                  ...TransitionPresets.ModalSlideFromBottomIOS,
-                  presentation: 'transparentModal',
-                }}
-              />
-              <Stack.Screen
-                name="ViewAll"
-                component={ViewAllScreen}
-                options={{ headerShown: false }}
-              />
-            </Stack.Navigator>
-          </NavigationContainer>
-        </SmartlinkAdProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <SmartlinkAdProvider>
+            <NavigationContainer>
+              <Stack.Navigator
+                initialRouteName="Home"
+                screenOptions={NAVIGATOR_SCREEN_OPTIONS}
+              >
+                <Stack.Screen
+                  name="Home"
+                  component={HomeScreen}
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  name="Details"
+                  component={DetailsScreen}
+                  options={{ title: 'Media Info' }}
+                />
+                <Stack.Screen
+                  name="Player"
+                  component={PlayerScreen}
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  name="Search"
+                  component={SearchScreen}
+                  options={{ 
+                    headerShown: false,
+                    ...TransitionPresets.ModalSlideFromBottomIOS,
+                    presentation: 'transparentModal',
+                  }}
+                />
+                <Stack.Screen
+                  name="ViewAll"
+                  component={ViewAllScreen}
+                  options={{ headerShown: false }}
+                />
+              </Stack.Navigator>
+            </NavigationContainer>
+          </SmartlinkAdProvider>
+        </GestureHandlerRootView>
       )}
     </>
   );

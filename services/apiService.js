@@ -40,9 +40,9 @@ export const getCachedImageUri = (url) => {
     return targetUrl;
   }
 
-  // For other slow domains, use a global CDN proxy (wsrv.nl) to cache, resize and convert to webp
-  const encodedUrl = encodeURIComponent(targetUrl);
-  return `https://wsrv.nl/?url=${encodedUrl}&w=300&output=webp`;
+  // Use Photon CDN (i0.wp.com) which is incredibly fast for first-time caching and resizing
+  const strippedUrl = targetUrl.replace(/^https?:\/\//, '');
+  return `https://i0.wp.com/${strippedUrl}?w=300&strip=all`;
 };
 
 const API_FALLBACKS = [
