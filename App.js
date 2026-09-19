@@ -14,7 +14,6 @@ import SearchScreen from './screens/SearchScreen';
 import DownloadsScreen from './screens/DownloadsScreen';
 import { SmartlinkAdProvider } from './context/SmartlinkAdContext';
 import { DownloadProvider } from './context/DownloadContext';
-import { PostHogProvider } from 'posthog-react-native';
 
 // Enable native screen containers
 enableScreens(true);
@@ -100,11 +99,6 @@ export default function App() {
           <SmartlinkAdProvider>
 
             <DownloadProvider>
-              <PostHogProvider apiKey={process.env.EXPO_PUBLIC_POSTHOG_API_KEY || 'missing'} options={{
-                host: 'https://app.posthog.com',
-                autocapture: true,
-                captureNativeAppLifecycleEvents: true,
-              }}>
                 <NavigationContainer>
                   <Stack.Navigator
                     initialRouteName="Home"
@@ -146,7 +140,6 @@ export default function App() {
                     />
                   </Stack.Navigator>
                 </NavigationContainer>
-              </PostHogProvider>
             </DownloadProvider>
           </SmartlinkAdProvider>
         </GestureHandlerRootView>

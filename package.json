@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@notifee/react-native": "^9.1.8",
-    "@posthog/core": "^1.55.0",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-navigation/native": "^6.1.17",
     "@react-navigation/stack": "^6.3.29",
@@ -42,7 +41,6 @@
     "helmet": "^8.2.0",
     "mongoose": "^9.10.1",
     "node-cron": "^4.6.0",
-    "posthog-react-native": "^4.75.0",
     "puppeteer": "^25.10.0",
     "react": "18.3.1",
     "react-native": "0.76.9",
