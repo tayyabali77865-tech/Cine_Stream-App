@@ -32,9 +32,15 @@ const reportedErrorSchema = new mongoose.Schema({
   reportedAt: { type: String, default: () => new Date().toISOString() }
 });
 
+const pushTokenSchema = new mongoose.Schema({
+  token:     { type: String, required: true, unique: true, index: true },
+  updatedAt: { type: Date, default: Date.now }
+});
+
 const DeletedMedia   = mongoose.model('DeletedMedia',   deletedMediaSchema);
 const CustomOverride = mongoose.model('CustomOverride', customOverrideSchema);
 const ReportedError  = mongoose.model('ReportedError',  reportedErrorSchema);
+const PushToken      = mongoose.model('PushToken',      pushTokenSchema);
 
 // ─── In-Memory Fallback (if MongoDB is offline) ───────────────────────────────
 
@@ -290,10 +296,9 @@ async function batchGetOverrides(ids) {
 // PUSH TOKENS
 // ----------------------------------------------------------------------------
 async function registerPushToken(token) {
+  if (!isConnected) return false;
   try {
-    const db = getDb();
-    const collection = db.collection('pushtokens');
-    await collection.updateOne(
+    await PushToken.updateOne(
       { token },
       { $set: { token, updatedAt: new Date() } },
       { upsert: true }
@@ -306,10 +311,9 @@ async function registerPushToken(token) {
 }
 
 async function getAllPushTokens() {
+  if (!isConnected) return [];
   try {
-    const db = getDb();
-    const collection = db.collection('pushtokens');
-    const docs = await collection.find({}).toArray();
+    const docs = await PushToken.find({}).lean();
     return docs.map(doc => doc.token);
   } catch (err) {
     console.error('[MongoDB] getAllPushTokens error:', err.message);
