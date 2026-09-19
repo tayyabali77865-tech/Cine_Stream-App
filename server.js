@@ -1805,6 +1805,8 @@ app.post('/api/send-push-notification', async (req, res) => {
         sound: 'default',
         title: title,
         body: message,
+        priority: 'high',
+        channelId: 'default',
         data: { },
       };
       
