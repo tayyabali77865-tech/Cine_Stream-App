@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import * as Application from 'expo-application';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const POSTHOG_API_KEY = process.env.EXPO_PUBLIC_POSTHOG_API_KEY;
+const POSTHOG_API_KEY = process.env.EXPO_PUBLIC_POSTHOG_API_KEY ? process.env.EXPO_PUBLIC_POSTHOG_API_KEY.trim() : null;
 const POSTHOG_HOST = 'https://us.i.posthog.com/capture/';
 
 // Generate or retrieve a random distinct ID for this installation
@@ -25,15 +25,18 @@ async function getDistinctId() {
 }
 
 export const trackEvent = async (eventName, properties = {}) => {
-  if (!POSTHOG_API_KEY) return;
+  if (!POSTHOG_API_KEY) {
+    console.warn('[Analytics] POSTHOG_API_KEY is not defined in .env! Tracking disabled.');
+    return;
+  }
 
   try {
     const id = await getDistinctId();
     const payload = {
       api_key: POSTHOG_API_KEY,
       event: eventName,
+      distinct_id: id,
       properties: {
-        distinct_id: id,
         $lib: 'custom-fetch',
         $os: Platform.OS,
         $os_version: Platform.Version,
@@ -43,13 +46,17 @@ export const trackEvent = async (eventName, properties = {}) => {
       timestamp: new Date().toISOString(),
     };
 
-    await fetch(POSTHOG_HOST, {
+    const response = await fetch(POSTHOG_HOST, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
     });
+    
+    if (!response.ok) {
+       console.warn('[Analytics] PostHog API error:', await response.text());
+    }
   } catch (error) {
     console.warn('[Analytics] Failed to send event to PostHog:', error.message);
   }
