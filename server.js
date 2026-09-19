@@ -95,6 +95,9 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Trust proxy for rate limiting behind Railway/Vercel
+app.set('trust proxy', 1);
+
 // Rate Limiting
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 mins
