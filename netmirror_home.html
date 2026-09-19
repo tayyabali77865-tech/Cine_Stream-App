@@ -632,7 +632,9 @@
             <input type="text" id="pushTitle" placeholder="e.g. New Movie Added: Deadpool & Wolverine!" 
               style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;margin-bottom:12px;">
             <textarea id="pushMessage" placeholder="e.g. Watch it now in HD quality on CineStream." rows="3"
-              style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;font-family:monospace;resize:vertical;"></textarea>
+              style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;font-family:monospace;resize:vertical;margin-bottom:12px;"></textarea>
+            <input type="text" id="pushImageUrl" placeholder="Image URL (Optional) e.g. https://example.com/image.jpg" 
+              style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;">
             <button class="btn" onclick="sendPushNotification()" style="width:100%;padding:14px;font-size:15px;font-weight:700;margin-top:12px;background:#F50057;color:#fff;">📢 Broadcast Notification Now</button>
           </div>
 
@@ -1152,6 +1154,41 @@
         }
       } catch (e) {
         console.warn('Failed to load ad config:', e);
+      }
+    }
+
+    async function sendPushNotification() {
+      const title = document.getElementById('pushTitle').value.trim();
+      const message = document.getElementById('pushMessage').value.trim();
+      const imageUrl = document.getElementById('pushImageUrl').value.trim();
+
+      if (!title || !message) {
+        alert('Please enter both title and message for the push notification.');
+        return;
+      }
+
+      if (!confirm(`Are you sure you want to broadcast this notification to ALL users?\n\nTitle: ${title}`)) return;
+
+      try {
+        const res = await fetch('/api/send-push-notification', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-API-Key': document.getElementById('authPassword').value
+          },
+          body: JSON.stringify({ title, message, imageUrl })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Notification sent successfully to ${data.count || 0} devices!`);
+          document.getElementById('pushTitle').value = '';
+          document.getElementById('pushMessage').value = '';
+          document.getElementById('pushImageUrl').value = '';
+        } else {
+          alert('Failed to send push notification: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Error sending push notification: ' + err.message);
       }
     }
 
