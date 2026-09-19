@@ -22,6 +22,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as NavigationBar from 'expo-navigation-bar';
 import { useSmartlinkAd } from '../context/SmartlinkAdContext';
+import { useDownloadContext } from '../context/DownloadContext';
 
 // ─── Screen Dimensions ────────────────────────────────────────────────────────
 
@@ -152,6 +153,7 @@ export default function PlayerScreen({ route, navigation }) {
   const activeLanguage = defaultLanguage || 'Hindi';
 
   const { showAdIfReady, setIsPlayerActive } = useSmartlinkAd();
+  const { startDownload: globalStartDownload } = useDownloadContext();
 
   useFocusEffect(
     useCallback(() => {
@@ -251,21 +253,6 @@ export default function PlayerScreen({ route, navigation }) {
 
     // backAction reads downloadingRef (not stale closure over dlState.downloading)
     const backAction = () => {
-      if (downloadingRef.current) {
-        Alert.alert(
-          'Active Download',
-          'Leaving will cancel the current download. Continue?',
-          [
-            { text: 'Stay', style: 'cancel' },
-            {
-              text: 'Cancel & Exit',
-              style: 'destructive',
-              onPress: () => { cancelDownload(); navigation.goBack(); }
-            }
-          ]
-        );
-        return true;
-      }
       navigation.goBack();
       return true;
     };
@@ -466,21 +453,15 @@ export default function PlayerScreen({ route, navigation }) {
   // ── Start Download ────────────────────────────────────────────────────────
   const startDownload = useCallback(async (quality) => {
     dispatchQuality({ type: 'CLOSE' });
-    const { status } = await MediaLibrary.requestPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Storage permission is needed to save videos to your gallery.');
-      return;
-    }
-
-    dispatchDl({ type: 'START', quality });
-
-    const estBytes = parseSizeToBytes(quality.size);
-    const ext = quality.url.split('?')[0].split('.').pop()?.split('/').pop() || 'mp4';
-    const fileUri = `${FileSystem.documentDirectory}${sanitizeFilename(videoTitle)}_${quality.quality}.${ext}`;
-
-    lastTs.current = Date.now();
-    lastBytes.current = 0;
-
+    
+    const mediaInfo = {
+      id: id,
+      title: videoTitle,
+      isTvShow: isTvShow,
+      season: currentSeason || '',
+      episode: currentEpisode || ''
+    };
+    
     const referer = qualityState.referer;
     const downloadHeaders = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -493,17 +474,10 @@ export default function PlayerScreen({ route, navigation }) {
       downloadHeaders['Referer'] = 'https://fmoviesunblocked.net/';
     }
 
-    downloadRef.current = FileSystem.createDownloadResumable(
-      quality.url,
-      fileUri,
-      {
-        headers: downloadHeaders
-      },
-      makeCallback(estBytes)
-    );
+    // Use global DownloadContext
+    globalStartDownload(mediaInfo, quality.url, downloadHeaders);
 
-    await runDownload(fileUri);
-  }, [videoTitle, qualityState.referer, makeCallback]);
+  }, [id, videoTitle, isTvShow, currentSeason, currentEpisode, qualityState.referer, globalStartDownload]);
 
   // ── Core Download Runner ──────────────────────────────────────────────────
   const runDownload = useCallback(async (fileUri) => {
@@ -905,39 +879,14 @@ export default function PlayerScreen({ route, navigation }) {
             Audio: <Text style={styles.langValue}>{activeLanguage}</Text>
           </Text>
 
-          {downloading ? (
-            <View style={styles.dlInlineCard}>
-              <TouchableOpacity
-                style={styles.dlInlineIconBtn}
-                onPress={!isPaused && !offlinePaused ? pauseDownload : resumeDownload}
-                disabled={offlinePaused}
-              >
-                <Ionicons name={!isPaused && !offlinePaused ? "pause" : "play"} size={22} color="#FFF" />
-              </TouchableOpacity>
-              
-              <View style={styles.dlInlineProgressWrapper}>
-                <View style={styles.dlInlineTrack}>
-                  <View style={[styles.dlInlineFill, { width: `${Math.round(progress * 100)}%` }]} />
-                </View>
-                <Text style={styles.dlInlineStats}>
-                  {offlinePaused ? 'Waiting for connection...' : `${Math.round(progress * 100)}% • ${downloadedMB} MB / ${totalMB} MB`}
-                </Text>
-              </View>
-
-              <TouchableOpacity style={styles.dlInlineIconBtn} onPress={cancelDownload}>
-                <Ionicons name="close" size={24} color="#EF4444" />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity
-              id="download-button"
-              style={styles.dlBtn}
-              onPress={() => showAdIfReady(() => openDownloadModal())}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.dlBtnText}>{downloadBtnText}</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            id="download-button"
+            style={styles.dlBtn}
+            onPress={() => showAdIfReady(() => openDownloadModal())}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.dlBtnText}>{downloadBtnText}</Text>
+          </TouchableOpacity>
 
           {/* Season and Episode Pickers */}
           {isTvShow && localSeasons && localSeasons.length > 0 && (

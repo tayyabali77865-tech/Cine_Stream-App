@@ -286,6 +286,37 @@ async function batchGetOverrides(ids) {
   }
 }
 
+// ----------------------------------------------------------------------------
+// PUSH TOKENS
+// ----------------------------------------------------------------------------
+async function registerPushToken(token) {
+  try {
+    const db = getDb();
+    const collection = db.collection('pushtokens');
+    await collection.updateOne(
+      { token },
+      { $set: { token, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    return true;
+  } catch (err) {
+    console.error('[MongoDB] registerPushToken error:', err.message);
+    return false;
+  }
+}
+
+async function getAllPushTokens() {
+  try {
+    const db = getDb();
+    const collection = db.collection('pushtokens');
+    const docs = await collection.find({}).toArray();
+    return docs.map(doc => doc.token);
+  } catch (err) {
+    console.error('[MongoDB] getAllPushTokens error:', err.message);
+    return [];
+  }
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -302,5 +333,7 @@ module.exports = {
   removeReportedError,
   getAllReportedErrors,
   batchGetDeleted,
-  batchGetOverrides
+  batchGetOverrides,
+  registerPushToken,
+  getAllPushTokens
 };

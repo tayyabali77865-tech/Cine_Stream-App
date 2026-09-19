@@ -11,7 +11,9 @@ import DetailsScreen from './screens/DetailsScreen';
 import PlayerScreen from './screens/PlayerScreen';
 import ViewAllScreen from './screens/ViewAllScreen';
 import SearchScreen from './screens/SearchScreen';
+import DownloadsScreen from './screens/DownloadsScreen';
 import { SmartlinkAdProvider } from './context/SmartlinkAdContext';
+import { DownloadProvider } from './context/DownloadContext';
 
 // Enable native screen containers
 enableScreens(true);
@@ -34,9 +36,20 @@ const NAVIGATOR_SCREEN_OPTIONS = {
   cardStyle: { backgroundColor: '#09090C' },
 };
 
+import { registerForPushNotificationsAsync, sendPushTokenToServer } from './services/PushNotificationService';
+
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Initialize Push Notifications
+  useEffect(() => {
+    registerForPushNotificationsAsync().then(token => {
+      if (token) {
+        sendPushTokenToServer(token);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     // Hide native splash screen and let our animated custom splash screen take over
@@ -84,42 +97,50 @@ export default function App() {
       ) : (
         <GestureHandlerRootView style={{ flex: 1 }}>
           <SmartlinkAdProvider>
-            <NavigationContainer>
-              <Stack.Navigator
-                initialRouteName="Home"
-                screenOptions={NAVIGATOR_SCREEN_OPTIONS}
-              >
-                <Stack.Screen
-                  name="Home"
-                  component={HomeScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="Details"
-                  component={DetailsScreen}
-                  options={{ title: 'Media Info' }}
-                />
-                <Stack.Screen
-                  name="Player"
-                  component={PlayerScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="Search"
-                  component={SearchScreen}
-                  options={{ 
-                    headerShown: false,
-                    ...TransitionPresets.ModalSlideFromBottomIOS,
-                    presentation: 'transparentModal',
-                  }}
-                />
-                <Stack.Screen
-                  name="ViewAll"
-                  component={ViewAllScreen}
-                  options={{ headerShown: false }}
-                />
-              </Stack.Navigator>
-            </NavigationContainer>
+
+            <DownloadProvider>
+              <NavigationContainer>
+                <Stack.Navigator
+                  initialRouteName="Home"
+                  screenOptions={NAVIGATOR_SCREEN_OPTIONS}
+                >
+                  <Stack.Screen
+                    name="Home"
+                    component={HomeScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="Details"
+                    component={DetailsScreen}
+                    options={{ title: 'Media Info' }}
+                  />
+                  <Stack.Screen
+                    name="Player"
+                    component={PlayerScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="Search"
+                    component={SearchScreen}
+                    options={{ 
+                      headerShown: false,
+                      ...TransitionPresets.ModalSlideFromBottomIOS,
+                      presentation: 'transparentModal',
+                    }}
+                  />
+                  <Stack.Screen
+                    name="Downloads"
+                    component={DownloadsScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="ViewAll"
+                    component={ViewAllScreen}
+                    options={{ headerShown: false }}
+                  />
+                </Stack.Navigator>
+              </NavigationContainer>
+            </DownloadProvider>
           </SmartlinkAdProvider>
         </GestureHandlerRootView>
       )}

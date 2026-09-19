@@ -1769,6 +1769,61 @@ app.get('/api/admin/force-sync-links', (req, res) => {
 });
 
 // Server Listen
+// ============================================================================
+// PUSH NOTIFICATIONS API
+// ============================================================================
+
+app.post('/api/register-push-token', async (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: 'Token is required' });
+  
+  const success = await db.registerPushToken(token);
+  if (success) {
+    res.json({ success: true });
+  } else {
+    res.status(500).json({ error: 'Failed to register token' });
+  }
+});
+
+app.post('/api/send-push-notification', async (req, res) => {
+  const { title, message } = req.body;
+  if (!title || !message) return res.status(400).json({ error: 'Title and message are required' });
+
+  try {
+    const tokens = await db.getAllPushTokens();
+    if (!tokens || tokens.length === 0) {
+      return res.json({ success: true, message: 'No devices registered for notifications.' });
+    }
+
+    const messages = [];
+    for (let pushToken of tokens) {
+      messages.push({
+        to: pushToken,
+        sound: 'default',
+        title: title,
+        body: message,
+        data: { },
+      });
+    }
+
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(messages),
+    });
+
+    const data = await response.json();
+    res.json({ success: true, expoResponse: data, count: tokens.length });
+  } catch (error) {
+    console.error('[Push] Error sending push notification:', error);
+    res.status(500).json({ error: 'Failed to broadcast' });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', async () => {
   console.log(`\n🚀 Production Scraper Server active on http://0.0.0.0:${PORT}/api`);
 

@@ -25,6 +25,7 @@ if (Platform.OS === 'android') {
 }
 import { Image as ExpoImage } from 'expo-image';
 import { apiService, getCachedImageUri } from '../services/apiService';
+import { useDownloadContext } from '../context/DownloadContext';
 import { Ionicons } from '@expo/vector-icons';
 import HomeSection from '../components/HomeSection';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -373,6 +374,9 @@ export default function HomeScreen({ navigation }) {
   const pageRef = useRef(page);
   const isSearchingRef = useRef(isSearching);
   const searchQueryRef = useRef(searchQuery);
+
+  const { activeDownloads } = useDownloadContext();
+  const activeCount = activeDownloads?.filter(d => d.status === 'downloading').length || 0;
   const activeFilterRef = useRef(activeFilter);
   const activeCategoryRef = useRef(activeCategory);
 
@@ -949,9 +953,34 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.logoCine}>Cine</Text>
           <Text style={styles.logoStream}>Stream</Text>
         </View>
-        <TouchableOpacity onPress={() => navigation.navigate('Search')} style={{ padding: 4 }}>
-          <Ionicons name="search" size={24} color="#FFF" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity onPress={() => navigation.navigate('Search')} style={{ padding: 8 }}>
+            <Ionicons name="search" size={24} color="#FFF" />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('Downloads')} 
+            style={{ padding: 8, marginLeft: 4, position: 'relative' }}
+          >
+            <Ionicons name="download-outline" size={24} color="#FFF" />
+            {activeCount > 0 && (
+              <View style={{
+                position: 'absolute',
+                top: 2,
+                right: 2,
+                backgroundColor: '#F50057',
+                borderRadius: 10,
+                width: 18,
+                height: 18,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}>
+                <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>
+                  {activeCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Filter Horizontal Pill Selector Panel - REMOVED */}
