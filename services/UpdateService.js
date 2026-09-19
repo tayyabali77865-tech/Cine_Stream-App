@@ -12,13 +12,22 @@ export const checkAndPromptUpdate = async (apkUrl) => {
   }
 
   try {
+    // BUG FIX: Actually check if we have already prompted the user for this specific update URL
+    const lastPromptedUrl = await AsyncStorage.getItem(LAST_UPDATE_KEY);
+    if (lastPromptedUrl === apkUrl) {
+      return; // User already dismissed this specific update
+    }
+
     const fileUri = `${FileSystem.documentDirectory}cinestream-update.apk`;
 
     // 1. Silent Background Download (No toasts, no interruptions)
     const downloadRes = await FileSystem.downloadAsync(apkUrl, fileUri);
     
-    // 2. Download Complete -> Show Popup with "Update" button
-    if (downloadRes.status === 200) {
+    // 2. Validate that it's actually an APK and not an HTML error page or placeholder link
+    const fileInfo = await FileSystem.getInfoAsync(fileUri);
+    
+    // A real React Native APK is usually > 15MB. If it's less than 2MB, it's definitely not a valid update APK.
+    if (downloadRes.status === 200 && fileInfo.size > 2000000) {
       Alert.alert(
         "Update Ready 🚀",
         "A new version of CineStream has been downloaded and is ready to install.",
@@ -34,6 +43,8 @@ export const checkAndPromptUpdate = async (apkUrl) => {
           {
             text: "Update Now",
             onPress: async () => {
+              // Mark as prompted so it doesn't loop if they cancel the installation screen
+              await AsyncStorage.setItem(LAST_UPDATE_KEY, apkUrl);
               try {
                 const contentUri = await FileSystem.getContentUriAsync(downloadRes.uri);
                 await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {

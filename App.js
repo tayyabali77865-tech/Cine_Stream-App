@@ -14,6 +14,7 @@ import SearchScreen from './screens/SearchScreen';
 import DownloadsScreen from './screens/DownloadsScreen';
 import { SmartlinkAdProvider } from './context/SmartlinkAdContext';
 import { DownloadProvider } from './context/DownloadContext';
+import { PostHogProvider } from 'posthog-react-native';
 
 // Enable native screen containers
 enableScreens(true);
@@ -99,47 +100,53 @@ export default function App() {
           <SmartlinkAdProvider>
 
             <DownloadProvider>
-              <NavigationContainer>
-                <Stack.Navigator
-                  initialRouteName="Home"
-                  screenOptions={NAVIGATOR_SCREEN_OPTIONS}
-                >
-                  <Stack.Screen
-                    name="Home"
-                    component={HomeScreen}
-                    options={{ headerShown: false }}
-                  />
-                  <Stack.Screen
-                    name="Details"
-                    component={DetailsScreen}
-                    options={{ title: 'Media Info' }}
-                  />
-                  <Stack.Screen
-                    name="Player"
-                    component={PlayerScreen}
-                    options={{ headerShown: false }}
-                  />
-                  <Stack.Screen
-                    name="Search"
-                    component={SearchScreen}
-                    options={{ 
-                      headerShown: false,
-                      ...TransitionPresets.ModalSlideFromBottomIOS,
-                      presentation: 'transparentModal',
-                    }}
-                  />
-                  <Stack.Screen
-                    name="Downloads"
-                    component={DownloadsScreen}
-                    options={{ headerShown: false }}
-                  />
-                  <Stack.Screen
-                    name="ViewAll"
-                    component={ViewAllScreen}
-                    options={{ headerShown: false }}
-                  />
-                </Stack.Navigator>
-              </NavigationContainer>
+              <PostHogProvider apiKey={process.env.EXPO_PUBLIC_POSTHOG_API_KEY} options={{
+                host: 'https://app.posthog.com',
+                autocapture: true,
+                captureNativeAppLifecycleEvents: true,
+              }}>
+                <NavigationContainer>
+                  <Stack.Navigator
+                    initialRouteName="Home"
+                    screenOptions={NAVIGATOR_SCREEN_OPTIONS}
+                  >
+                    <Stack.Screen
+                      name="Home"
+                      component={HomeScreen}
+                      options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                      name="Details"
+                      component={DetailsScreen}
+                      options={{ title: 'Media Info' }}
+                    />
+                    <Stack.Screen
+                      name="Player"
+                      component={PlayerScreen}
+                      options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                      name="Search"
+                      component={SearchScreen}
+                      options={{ 
+                        headerShown: false,
+                        ...TransitionPresets.ModalSlideFromBottomIOS,
+                        presentation: 'transparentModal',
+                      }}
+                    />
+                    <Stack.Screen
+                      name="Downloads"
+                      component={DownloadsScreen}
+                      options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                      name="ViewAll"
+                      component={ViewAllScreen}
+                      options={{ headerShown: false }}
+                    />
+                  </Stack.Navigator>
+                </NavigationContainer>
+              </PostHogProvider>
             </DownloadProvider>
           </SmartlinkAdProvider>
         </GestureHandlerRootView>
