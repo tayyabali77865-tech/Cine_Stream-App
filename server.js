@@ -153,6 +153,11 @@ app.use((req, res, next) => {
     return next();
   }
 
+  // Exempt public client routes
+  if (urlClean === '/api/report-error' || urlClean === '/api/register-push-token') {
+    return next();
+  }
+
   const signature = req.headers['x-signature'];
   const timestamp = req.headers['x-timestamp'];
 
