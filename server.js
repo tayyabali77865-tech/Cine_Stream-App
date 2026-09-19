@@ -1815,9 +1815,11 @@ app.post('/api/send-push-notification', async (req, res) => {
         data: { },
       };
       
-      // Pass the image URL natively to Expo
+      // Pass the image URL in multiple formats to ensure compatibility with Expo FCM
       if (imageUrl && typeof imageUrl === 'string' && imageUrl.startsWith('http')) {
-        msg.image = imageUrl;
+        msg.image = imageUrl; // Old standard / direct native FCM mapping
+        msg.richContent = { image: imageUrl }; // New Expo standard
+        msg.data = { ...msg.data, image: imageUrl }; // Fallback data object
       }
       
       messages.push(msg);
