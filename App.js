@@ -14,7 +14,7 @@ import SearchScreen from './screens/SearchScreen';
 import DownloadsScreen from './screens/DownloadsScreen';
 import { SmartlinkAdProvider } from './context/SmartlinkAdContext';
 import { DownloadProvider } from './context/DownloadContext';
-import { PostHogProvider } from 'posthog-react-native';
+import { trackScreenView } from './services/AnalyticsService';
 
 // Enable native screen containers
 enableScreens(true);
@@ -42,6 +42,8 @@ import { registerForPushNotificationsAsync, sendPushTokenToServer } from './serv
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const routeNameRef = useRef();
+  const navigationRef = useRef();
 
   // Initialize Push Notifications
   useEffect(() => {
@@ -99,16 +101,21 @@ export default function App() {
         <GestureHandlerRootView style={{ flex: 1 }}>
           <SmartlinkAdProvider>
             <DownloadProvider>
-              <PostHogProvider 
-                apiKey={process.env.EXPO_PUBLIC_POSTHOG_API_KEY || 'missing'} 
-                options={{
-                  host: 'https://app.posthog.com',
-                  autocapture: true,
-                  captureNativeAppLifecycleEvents: true,
-                  disableSurveys: true
-                }}
-              >
-                <NavigationContainer>
+                <NavigationContainer
+                  ref={navigationRef}
+                  onReady={() => {
+                    routeNameRef.current = navigationRef.current.getCurrentRoute().name;
+                    trackScreenView(routeNameRef.current);
+                  }}
+                  onStateChange={async () => {
+                    const previousRouteName = routeNameRef.current;
+                    const currentRouteName = navigationRef.current.getCurrentRoute().name;
+                    if (previousRouteName !== currentRouteName) {
+                      trackScreenView(currentRouteName);
+                    }
+                    routeNameRef.current = currentRouteName;
+                  }}
+                >
                   <Stack.Navigator
                     initialRouteName="Home"
                     screenOptions={NAVIGATOR_SCREEN_OPTIONS}
@@ -149,7 +156,6 @@ export default function App() {
                     />
                   </Stack.Navigator>
                 </NavigationContainer>
-              </PostHogProvider>
             </DownloadProvider>
           </SmartlinkAdProvider>
         </GestureHandlerRootView>
