@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@notifee/react-native": "^9.1.8",
+    "@posthog/core": "^1.55.0",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-navigation/native": "^6.1.17",
     "@react-navigation/stack": "^6.3.29",
