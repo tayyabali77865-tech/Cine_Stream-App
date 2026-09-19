@@ -100,7 +100,7 @@ export default function App() {
           <SmartlinkAdProvider>
 
             <DownloadProvider>
-              <PostHogProvider apiKey={process.env.EXPO_PUBLIC_POSTHOG_API_KEY} options={{
+              <PostHogProvider apiKey={process.env.EXPO_PUBLIC_POSTHOG_API_KEY || 'missing'} options={{
                 host: 'https://app.posthog.com',
                 autocapture: true,
                 captureNativeAppLifecycleEvents: true,
