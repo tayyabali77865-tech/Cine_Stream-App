@@ -1170,11 +1170,22 @@
       if (!confirm(`Are you sure you want to broadcast this notification to ALL users?\n\nTitle: ${title}`)) return;
 
       try {
+        const timestamp = String(Date.now());
+        const secretKey = document.getElementById('authKey').value || 'cinestream_secret_secure_key_2026';
+        const dataToSign = `/api/send-push-notification${timestamp}`;
+        const encoder = new TextEncoder();
+        const keyData = encoder.encode(secretKey);
+        const msgData = encoder.encode(dataToSign);
+        const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+        const sigBuffer = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
+        const signature = Array.from(new Uint8Array(sigBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
         const res = await fetch('/api/send-push-notification', {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
-            'X-API-Key': document.getElementById('authKey').value
+            'X-Signature': signature,
+            'X-Timestamp': timestamp
           },
           body: JSON.stringify({ title, message, imageUrl })
         });
