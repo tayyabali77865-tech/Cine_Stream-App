@@ -1786,7 +1786,7 @@ app.post('/api/register-push-token', async (req, res) => {
 });
 
 app.post('/api/send-push-notification', async (req, res) => {
-  const { title, message } = req.body;
+  const { title, message, imageUrl } = req.body;
   if (!title || !message) return res.status(400).json({ error: 'Title and message are required' });
 
   try {
@@ -1797,13 +1797,20 @@ app.post('/api/send-push-notification', async (req, res) => {
 
     const messages = [];
     for (let pushToken of tokens) {
-      messages.push({
+      const msg = {
         to: pushToken,
         sound: 'default',
         title: title,
         body: message,
         data: { },
-      });
+      };
+      
+      // Pass the image URL natively to Expo
+      if (imageUrl && typeof imageUrl === 'string' && imageUrl.startsWith('http')) {
+        msg.image = imageUrl;
+      }
+      
+      messages.push(msg);
     }
 
     const response = await fetch('https://exp.host/--/api/v2/push/send', {

@@ -40,8 +40,7 @@ export async function registerForPushNotificationsAsync() {
     // Get the token that uniquely identifies this device
     try {
       // For bare workflow or custom clients, projectId needs to be specified.
-      // If we don't have it, we fallback to just getExpoPushTokenAsync()
-      const projectId = "ca2b8c9d-d8e2-41eb-bcc6-33924f74d471"; // Example EAS project ID
+      const projectId = "1a99f29d-aeac-4689-a694-afb2351a6083"; // Real EAS project ID
       try {
         const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
         token = tokenResponse.data;
