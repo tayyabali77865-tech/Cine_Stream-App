@@ -234,8 +234,8 @@ function sortMediaList(list, isSearchActive, queryOrFilter) {
   if (isSearchActive && queryOrFilter) {
     return [...list].sort((a, b) => {
       // 1. Hindi priority
-      const aHindi = a.title.toLowerCase().includes('hindi');
-      const bHindi = b.title.toLowerCase().includes('hindi');
+      const aHindi = (a.title || '').toLowerCase().includes('hindi');
+      const bHindi = (b.title || '').toLowerCase().includes('hindi');
       if (aHindi && !bHindi) return -1;
       if (!aHindi && bHindi) return 1;
 
