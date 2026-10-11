@@ -13,7 +13,7 @@
       "distribution": "internal",
       "env": {
         "EAS_SKIP_AUTO_FINGERPRINT": "1",
-        "EXPO_PUBLIC_API_BASE_URL": "https://cinestream-app-production-640b.up.railway.app/",
+        "EXPO_PUBLIC_API_BASE_URL": "http://185.207.250.37:8000/",
         "EXPO_PUBLIC_API_KEY": "cinestream_secret_secure_key_2026"
       },
       "android": {
@@ -26,7 +26,7 @@
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://cinestream-app-production-640b.up.railway.app/",
+        "EXPO_PUBLIC_API_BASE_URL": "http://185.207.250.37:8000/",
         "EXPO_PUBLIC_API_KEY": "cinestream_secret_secure_key_2026"
       },
       "android": {
