@@ -113,7 +113,9 @@ const streamCache = new LRUCacheWithSWR({
 
 // Middleware
 app.use(helmet({
-  contentSecurityPolicy: false
+  contentSecurityPolicy: false,
+  crossOriginOpenerPolicy: false,
+  originAgentCluster: false
 }));
 app.use(compression());
 const ALLOWED_ORIGINS_BACKEND = [
@@ -1623,6 +1625,8 @@ function parseWatchboxHtml(html) {
 // ─── ADMIN PANEL ROUTING ENDPOINTS ──────────────────────────────────────────
 
 // Serving static web interface on "/" and "/admin"
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
 app.get(['/', '/admin'], (req, res) => {
   res.sendFile(path.join(__dirname, 'netmirror_home.html'));
 });
