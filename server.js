@@ -1713,25 +1713,81 @@ app.delete('/api/reported-errors/:id', async (req, res) => {
 });
 
 // ─── AD CONFIG ──────────────────────────────────────────────────────────────
-// In-memory ad config — toggle ads remotely without any app update
-// To persist across server restarts, this can be moved to MongoDB.
-let adConfigStore = {
-  adsEnabled: true,          // Master toggle — set to true to show ads to all users
-  interstitialCloseDelay: 5,  // Seconds before close button appears on interstitial
-  rewardedAdDuration: 30,     // Seconds user must watch rewarded ad before claiming reward
-  appUpdateLink: '',          // Global APK URL to trigger OTA updates across all clients
+// MongoDB-persisted ad config — survives server restarts!
+// appUpdateLink persists so ALL users receive OTA updates even after restart.
+
+const mongoose = require('mongoose');
+
+// Schema for persisted ad config
+const adConfigSchema = new mongoose.Schema({
+  _id: { type: String, default: 'global' },
+  adsEnabled: { type: Boolean, default: true },
+  interstitialCloseDelay: { type: Number, default: 5 },
+  rewardedAdDuration: { type: Number, default: 30 },
+  appUpdateLink: { type: String, default: '' },
   rewardedTriggers: {
-    playHd: false,            // Watch ad to play HD video
-    download: false,          // Watch ad to download
-    nextEpisode: false        // Watch ad to play next episode
+    type: Object,
+    default: { playHd: false, download: false, nextEpisode: false }
   },
-  bannerScript: '',           // HTML/JS ad script for banner ads (300x250)
-  nativeScript: '',           // HTML/JS ad script for native/inline ads
-  interstitialScript: '',     // HTML/JS ad script for full-screen interstitial ads
-  backgroundScript: '',       // HTML/JS ad script (push notifications, popunder)
-  rewardedScript: '',         // HTML/JS ad script for rewarded ads (user watches to earn reward)
+  bannerScript: { type: String, default: '' },
+  nativeScript: { type: String, default: '' },
+  interstitialScript: { type: String, default: '' },
+  backgroundScript: { type: String, default: '' },
+  rewardedScript: { type: String, default: '' },
+  updatedAt: { type: String, default: null }
+}, { _id: false });
+
+const AdConfigModel = mongoose.models.AdConfig || mongoose.model('AdConfig', adConfigSchema, 'ad_config');
+
+// In-memory cache (loaded from MongoDB on startup, written back on every update)
+let adConfigStore = {
+  adsEnabled: true,
+  interstitialCloseDelay: 5,
+  rewardedAdDuration: 30,
+  appUpdateLink: '',
+  rewardedTriggers: { playHd: false, download: false, nextEpisode: false },
+  bannerScript: '',
+  nativeScript: '',
+  interstitialScript: '',
+  backgroundScript: '',
+  rewardedScript: '',
   updatedAt: null
 };
+
+// Load config from MongoDB at startup (async IIFE)
+(async () => {
+  try {
+    // Wait up to 5 seconds for mongoose to be ready
+    for (let i = 0; i < 10; i++) {
+      if (mongoose.connection.readyState === 1) break;
+      await new Promise(r => setTimeout(r, 500));
+    }
+    if (mongoose.connection.readyState !== 1) {
+      console.warn('[AdConfig] MongoDB not ready at startup, using in-memory defaults');
+      return;
+    }
+    const doc = await AdConfigModel.findById('global').lean();
+    if (doc) {
+      adConfigStore = { ...adConfigStore, ...doc };
+      console.log(`[AdConfig] ✅ Loaded from MongoDB — appUpdateLink: "${adConfigStore.appUpdateLink}"`);
+    } else {
+      // First run: insert defaults
+      await AdConfigModel.findByIdAndUpdate('global', adConfigStore, { upsert: true, new: true });
+      console.log('[AdConfig] ✅ Initialized defaults in MongoDB');
+    }
+  } catch (e) {
+    console.warn('[AdConfig] MongoDB load failed, using defaults:', e.message);
+  }
+})();
+
+// Save current adConfigStore to MongoDB (called on every update)
+async function saveAdConfigToDb() {
+  try {
+    await AdConfigModel.findByIdAndUpdate('global', adConfigStore, { upsert: true, new: true });
+  } catch (e) {
+    console.warn('[AdConfig] MongoDB save failed:', e.message);
+  }
+}
 
 // Public endpoint — no HMAC required (old app versions can access)
 app.get('/api/ad-config', (req, res) => {
@@ -1739,7 +1795,7 @@ app.get('/api/ad-config', (req, res) => {
 });
 
 // Admin endpoint — update ad config (protected by HMAC)
-app.post('/api/ad-config/update', (req, res) => {
+app.post('/api/ad-config/update', async (req, res) => {
   const {
     adsEnabled,
     interstitialCloseDelay,
@@ -1771,9 +1827,13 @@ app.post('/api/ad-config/update', (req, res) => {
   if (typeof rewardedScript === 'string') adConfigStore.rewardedScript = rewardedScript;
   adConfigStore.updatedAt = new Date().toISOString();
 
-  console.log(`[AdConfig] Updated — adsEnabled: ${adConfigStore.adsEnabled}`);
+  // 💾 Persist to MongoDB so restarts don't lose appUpdateLink
+  await saveAdConfigToDb();
+
+  console.log(`[AdConfig] ✅ Updated & saved — adsEnabled: ${adConfigStore.adsEnabled}, appUpdateLink: "${adConfigStore.appUpdateLink}"`);
   res.json({ success: true, config: adConfigStore });
 });
+
 
 // Get active mirrors
 app.get('/api/mirrors', (req, res) => {

@@ -1,49 +1,64 @@
 import * as FileSystem from 'expo-file-system';
 import * as IntentLauncher from 'expo-intent-launcher';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform, Alert } from 'react-native';
+import { Platform, Alert, Linking, ToastAndroid } from 'react-native';
 
 const LAST_UPDATE_KEY = '@last_prompted_update_url';
 
 export const checkAndPromptUpdate = async (apkUrl) => {
-  // Only run on Android and if a valid HTTP URL is provided
+  // Only run on Android with a valid HTTP URL
   if (Platform.OS !== 'android' || !apkUrl || typeof apkUrl !== 'string' || !apkUrl.startsWith('http')) {
     return;
   }
 
   try {
-    // BUG FIX: Actually check if we have already prompted the user for this specific update URL
+    // Don't prompt again if user already dismissed THIS specific version
     const lastPromptedUrl = await AsyncStorage.getItem(LAST_UPDATE_KEY);
     if (lastPromptedUrl === apkUrl) {
-      return; // User already dismissed this specific update
+      return;
     }
 
     const fileUri = `${FileSystem.documentDirectory}cinestream-update.apk`;
 
-    // 1. Silent Background Download (No toasts, no interruptions)
-    const downloadRes = await FileSystem.downloadAsync(apkUrl, fileUri);
-    
-    // 2. Validate that it's actually an APK and not an HTML error page or placeholder link
+    // Show a small toast so user knows something is happening in background
+    ToastAndroid.show('Checking for update...', ToastAndroid.SHORT);
+
+    // Silent background download
+    const downloadCallback = FileSystem.createDownloadResumable(
+      apkUrl,
+      fileUri,
+      {},
+      (downloadProgress) => {
+        const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
+        // Optional: show progress toast every 25%
+        const pct = Math.floor(progress * 100);
+        if (pct === 25 || pct === 50 || pct === 75) {
+          ToastAndroid.show(`Downloading update: ${pct}%`, ToastAndroid.SHORT);
+        }
+      }
+    );
+
+    const downloadRes = await downloadCallback.downloadAsync();
+
+    // Validate the downloaded file is a real APK (> 2MB)
     const fileInfo = await FileSystem.getInfoAsync(fileUri);
-    
-    // A real React Native APK is usually > 15MB. If it's less than 2MB, it's definitely not a valid update APK.
-    if (downloadRes.status === 200 && fileInfo.size > 2000000) {
+
+    if (downloadRes && downloadRes.status === 200 && fileInfo.size > 2000000) {
+      // ✅ Download complete — NOW show the popup
       Alert.alert(
-        "Update Ready 🚀",
-        "A new version of CineStream has been downloaded and is ready to install.",
+        '🚀 Update Ready!',
+        'A new version of CineStream has been downloaded and is ready to install.',
         [
-          { 
-            text: "Later", 
-            style: "cancel",
+          {
+            text: 'Later',
+            style: 'cancel',
             onPress: async () => {
-              // Only mark as prompted if they explicitly click Later
               await AsyncStorage.setItem(LAST_UPDATE_KEY, apkUrl);
             }
           },
           {
-            text: "Update Now",
+            text: 'Install Now',
             onPress: async () => {
-              // Mark as prompted so it doesn't loop if they cancel the installation screen
               await AsyncStorage.setItem(LAST_UPDATE_KEY, apkUrl);
               try {
                 const contentUri = await FileSystem.getContentUriAsync(downloadRes.uri);
@@ -53,20 +68,29 @@ export const checkAndPromptUpdate = async (apkUrl) => {
                   type: 'application/vnd.android.package-archive',
                 });
               } catch (intentErr) {
-                // Fallback for older Android / SDKs
-                await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
-                  data: downloadRes.uri,
-                  flags: 1,
-                  type: 'application/vnd.android.package-archive',
-                });
+                // Fallback for older Android versions
+                try {
+                  await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+                    data: downloadRes.uri,
+                    flags: 1,
+                    type: 'application/vnd.android.package-archive',
+                  });
+                } catch (e2) {
+                  // Last resort: open in browser
+                  Linking.openURL(apkUrl).catch(() => {});
+                }
               }
             }
           }
         ],
         { cancelable: false }
       );
+    } else if (downloadRes && downloadRes.status === 200) {
+      // Downloaded but too small — not a real APK, open in browser
+      Linking.openURL(apkUrl).catch(() => {});
     }
   } catch (error) {
-    console.error('[UpdateService] Error:', error.message);
+    // If download fails silently, don't spam the user
+    console.warn('[UpdateService] Background download failed:', error.message);
   }
 };
