@@ -1880,18 +1880,26 @@ app.post('/api/send-push-notification', async (req, res) => {
       messages.push(msg);
     }
 
-    const response = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Accept-encoding': 'gzip, deflate',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(messages),
-    });
+    // Expo push notifications API allows max 100 messages per chunk
+    const chunkSize = 100;
+    const chunkPromises = [];
+    for (let i = 0; i < messages.length; i += chunkSize) {
+      const chunk = messages.slice(i, i + chunkSize);
+      chunkPromises.push(
+        fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Accept-encoding': 'gzip, deflate',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(chunk),
+        }).then(r => r.json()).catch(err => ({ error: err.message }))
+      );
+    }
 
-    const data = await response.json();
-    res.json({ success: true, expoResponse: data, count: tokens.length });
+    const chunkResults = await Promise.all(chunkPromises);
+    res.json({ success: true, count: tokens.length, chunks: chunkResults.length });
   } catch (error) {
     console.error('[Push] Error sending push notification:', error);
     res.status(500).json({ error: 'Failed to broadcast' });
