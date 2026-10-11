@@ -45,18 +45,20 @@ export const getCachedImageUri = (url) => {
     return targetUrl.replace(/_V1_.*(\.jpg|\.png|\.webp)$/i, '_V1_SX300$1');
   }
 
-  // Heavy external CDNs (pbcdn, aoneroom, etc): proxy via wsrv.nl
-  // wsrv.nl resizes to 300px wide WebP: reduces ~400KB images down to ~20KB
+  // Heavy external CDNs (pbcdn, pbcdnw, pacdn, aoneroom, etc): proxy via WordPress Photon (i0.wp.com)
+  // Handles huge 100MP images without pixel limit errors, outputs fast ~18KB thumbnails
   const heavyCdns = [
-    'pbcdn.aoneroom.com',
     'aoneroom.com',
+    'pbcdn.aoneroom.com',
+    'pbcdnw.aoneroom.com',
+    'pacdn.aoneroom.com',
     'cdnimg.akns-media.com',
     'static.toiimg.com',
   ];
   const isHeavyCdn = heavyCdns.some(cdn => targetUrl.includes(cdn));
   if (isHeavyCdn) {
-    const encoded = encodeURIComponent(targetUrl);
-    return `https://images.weserv.nl/?url=${encoded}&w=300&output=webp&q=75&n=-1`;
+    const cleanUrl = targetUrl.replace(/^https?:\/\//, '');
+    return `https://i0.wp.com/${cleanUrl}?w=300`;
   }
 
   // All other URLs: return direct (reliable and fast for most CDNs)
