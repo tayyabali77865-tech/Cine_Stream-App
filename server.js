@@ -24,7 +24,7 @@ const ScraperService = require('./services/scraperService');
 
 // Server-Side Poster Optimizer -- works for ALL APK versions (old + new)
 // Converts heavy CDN URLs to lightweight thumbnails before sending to client.
-// TMDB=w300 native, Amazon=SX300 native, heavy CDNs=i0.wp.com 300px JPEG (~18KB, no pixel limits)
+// TMDB=w300 native, Amazon=SX300 native, pbcdnw=Photon, pacdn/pbcdn=wsrv.nl
 function optimizePosterUrl(url) {
   if (!url || typeof url !== 'string') return 'https://placehold.co/300x450';
   if (url.includes('placehold.co') || url.includes('placeholder')) return url;
@@ -37,11 +37,15 @@ function optimizePosterUrl(url) {
   if (url.includes('m.media-amazon.com/images/')) {
     return url.replace(/_V1_.*\.(jpg|png|webp)$/i, '_V1_SX300.$1');
   }
-  // Heavy CDNs: use WordPress Photon (i0.wp.com) -> handles 100MP images with no pixel limits
-  const heavyCdns = ['aoneroom.com', 'pbcdn.aoneroom.com', 'pbcdnw.aoneroom.com', 'pacdn.aoneroom.com', 'cdnimg.akns-media.com', 'static.toiimg.com'];
-  if (heavyCdns.some(cdn => url.includes(cdn))) {
+  // 1. pbcdnw (like Hope: 97MP images): Photon handles extreme resolutions without error
+  if (url.includes('pbcdnw.aoneroom.com')) {
     const cleanUrl = url.replace(/^https?:\/\//, '');
     return `https://i0.wp.com/${cleanUrl}?w=300`;
+  }
+  // 2. pacdn (like Bigg Boss) and other CDNs: wsrv.nl resizes perfectly without 403
+  const wsrvCdns = ['pacdn.aoneroom.com', 'pbcdn.aoneroom.com', 'aoneroom.com', 'cdnimg.akns-media.com', 'static.toiimg.com'];
+  if (wsrvCdns.some(cdn => url.includes(cdn))) {
+    return 'https://images.weserv.nl/?url=' + encodeURIComponent(url) + '&w=300&output=webp&q=75&n=-1';
   }
   return url;
 }
