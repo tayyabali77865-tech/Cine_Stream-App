@@ -121,6 +121,8 @@ app.use(compression());
 const ALLOWED_ORIGINS_BACKEND = [
   'https://cinestream.watch',
   'https://www.cinestream.watch',
+  'http://185.207.250.37:8000',
+  'http://localhost:8000',
   'http://localhost:3000',
   'http://localhost:8081',
   'http://127.0.0.1:8081',
@@ -129,11 +131,14 @@ app.use(cors({
   origin: (origin, callback) => {
     // Allow no-origin requests (React Native app, server-to-server calls)
     if (!origin) return callback(null, true);
-    if (ALLOWED_ORIGINS_BACKEND.includes(origin)) return callback(null, true);
+    // Allow own host, localhost and official domains
+    if (ALLOWED_ORIGINS_BACKEND.includes(origin) || origin.includes('185.207.250.37') || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return callback(null, true);
+    }
     callback(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Signature', 'X-Timestamp']
+  methods: ['GET', 'POST', 'OPTIONS', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Signature', 'X-Timestamp', 'X-Admin-Key']
 }));
 app.use(express.json());
 
