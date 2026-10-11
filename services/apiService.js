@@ -41,8 +41,11 @@ export const getCachedImageUri = (url) => {
   return result;
 };
 
+// VPS image proxy base — routes slow CDN images through our own server cache
+const VPS_IMG_PROXY = 'http://185.207.250.37:8000/api/img?url=';
+
 function _resolveImageUri(url) {
-  if (url.startsWith('https://images.weserv.nl/')) return url;
+  if (url.startsWith('https://images.weserv.nl/') || url.startsWith('http://185.207.250.37')) return url;
 
   // Exclude placeholder images from proxying
   if (url.includes('placehold.co') || url.includes('placeholder')) return url;
@@ -53,37 +56,32 @@ function _resolveImageUri(url) {
     targetUrl = 'https:' + url;
   }
 
-  // ✅ TMDB: direct, fast — resize to w342 (better quality, still fast)
+  // ✅ TMDB: native resize to w342 — direct, no proxy needed (fast global CDN)
   if (targetUrl.includes('image.tmdb.org/t/p/')) {
     return targetUrl.replace(/\/t\/p\/[a-zA-Z0-9_-]+\//, '/t/p/w342/');
   }
 
-  // ✅ Amazon/IMDB: native resize — no proxy hop needed
+  // ✅ Amazon/IMDB: native resize — no proxy needed
   if (targetUrl.includes('m.media-amazon.com/images/')) {
     return targetUrl.replace(/_V1_.*(\.jpg|\.png|\.webp)$/i, '_V1_SX300$1');
   }
 
-  // ✅ pbcdnw: very large images — Photon CDN resize (no pixel limit, with quality)
-  if (targetUrl.includes('pbcdnw.aoneroom.com')) {
-    const cleanUrl = targetUrl.replace(/^https?:\/\//, '');
-    return `https://i0.wp.com/${cleanUrl}?w=300&quality=80`;
-  }
-
-  // ✅ pacdn / pbcdn / aoneroom CDNs: wsrv.nl resize (no 403, WebP output)
-  const wsrvCdns = [
-    'pacdn.aoneroom.com',
+  // ✅ All slow/problematic CDNs → route through our VPS proxy
+  // VPS fetches once, caches 6hrs, all users after first get instant load
+  const slowCdns = [
+    'pbcdnw.aoneroom.com',   // 97MP images (too big without resize)
+    'pacdn.aoneroom.com',    // Bigg Boss etc
     'pbcdn.aoneroom.com',
-    'aoneroom.com',
-    'cdnimg.akns-media.com',
-    'static.toiimg.com',
+    'aoneroom.com',          // General aoneroom CDN
+    'cdnimg.akns-media.com', // AKNS media
+    'static.toiimg.com',     // Times of India images
   ];
-  const isWsrvCdn = wsrvCdns.some(cdn => targetUrl.includes(cdn));
-  if (isWsrvCdn) {
-    const encoded = encodeURIComponent(targetUrl);
-    return `https://images.weserv.nl/?url=${encoded}&w=300&output=webp&q=80&n=-1`;
+  const isSlowCdn = slowCdns.some(cdn => targetUrl.includes(cdn));
+  if (isSlowCdn) {
+    return VPS_IMG_PROXY + encodeURIComponent(targetUrl);
   }
 
-  // All other CDNs: load direct — fastest (no extra network hop)
+  // All other CDNs: load direct (fast global CDNs like Cloudflare, Fastly, etc.)
   return targetUrl;
 }
 

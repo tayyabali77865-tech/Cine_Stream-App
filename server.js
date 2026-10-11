@@ -1789,6 +1789,72 @@ async function saveAdConfigToDb() {
   }
 }
 
+
+// ─── Image Proxy & Cache ──────────────────────────────────────────────────────
+// Server-side image proxy: fetches from origin CDN once, then serves from VPS.
+// This removes wsrv.nl/photon dependency and gives new users fast first load.
+
+const imgCache = new Map(); // url -> { buffer, contentType, cachedAt }
+const IMG_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hours
+
+// Cleanup old cache entries every hour
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of imgCache) {
+    if (now - val.cachedAt > IMG_CACHE_TTL) imgCache.delete(key);
+  }
+}, 60 * 60 * 1000);
+
+app.get('/api/img', async (req, res) => {
+  const { url } = req.query;
+  if (!url || !url.startsWith('http')) {
+    return res.status(400).json({ error: 'Missing or invalid url param' });
+  }
+
+  // Check cache first
+  const cached = imgCache.get(url);
+  if (cached && Date.now() - cached.cachedAt < IMG_CACHE_TTL) {
+    res.set('Content-Type', cached.contentType);
+    res.set('Cache-Control', 'public, max-age=21600'); // 6 hours
+    res.set('X-Cache', 'HIT');
+    return res.send(cached.buffer);
+  }
+
+  try {
+    const imageRes = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; CineStream/1.0)',
+        'Accept': 'image/webp,image/avif,image/*,*/*',
+        'Referer': 'https://netmirror.center/'
+      },
+      maxRedirects: 5
+    });
+
+    const contentType = imageRes.headers['content-type'] || 'image/jpeg';
+    const buffer = Buffer.from(imageRes.data);
+
+    // Only cache if it's actually an image and not too large (< 5MB)
+    if (contentType.startsWith('image/') && buffer.length < 5 * 1024 * 1024) {
+      // Evict oldest if cache > 200 entries
+      if (imgCache.size >= 200) {
+        imgCache.delete(imgCache.keys().next().value);
+      }
+      imgCache.set(url, { buffer, contentType, cachedAt: Date.now() });
+    }
+
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'public, max-age=21600');
+    res.set('X-Cache', 'MISS');
+    return res.send(buffer);
+  } catch (err) {
+    // Redirect to original URL if proxy fails (client can try direct)
+    console.warn('[ImgProxy] Failed for', url, ':', err.message);
+    return res.redirect(url);
+  }
+});
+
 // Public endpoint — no HMAC required (old app versions can access)
 app.get('/api/ad-config', (req, res) => {
   res.json(adConfigStore);
