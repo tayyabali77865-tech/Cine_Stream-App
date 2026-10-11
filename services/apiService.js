@@ -20,8 +20,28 @@ const normalizeBaseUrl = (value) => {
 };
 
 // ─── Image CDN Caching Proxy ──────────────────────────────────────────────────
+// In-memory memoization: getCachedImageUri is called on EVERY render per card.
+// Without this, wsrv.nl URL construction runs thousands of times for the same URL.
+const _imgUriCache = new Map();
+
 export const getCachedImageUri = (url) => {
   if (!url || typeof url !== 'string') return 'https://placehold.co/300x450';
+
+  // Fast path: already computed — O(1) lookup, no string ops
+  const cached = _imgUriCache.get(url);
+  if (cached) return cached;
+
+  const result = _resolveImageUri(url);
+
+  // Evict oldest if cache grows too large (> 500 entries)
+  if (_imgUriCache.size >= 500) {
+    _imgUriCache.delete(_imgUriCache.keys().next().value);
+  }
+  _imgUriCache.set(url, result);
+  return result;
+};
+
+function _resolveImageUri(url) {
   if (url.startsWith('https://images.weserv.nl/')) return url;
 
   // Exclude placeholder images from proxying
@@ -33,25 +53,23 @@ export const getCachedImageUri = (url) => {
     targetUrl = 'https:' + url;
   }
 
-  // Adjust TMDB sizes dynamically to w300 to reduce bandwidth
+  // ✅ TMDB: direct, fast — resize to w342 (better quality, still fast)
   if (targetUrl.includes('image.tmdb.org/t/p/')) {
-    targetUrl = targetUrl.replace(/\/t\/p\/[a-zA-Z0-9_-]+\//, '/t/p/w300/');
-    return targetUrl; // TMDB is fast enough and might block proxies, direct load
+    return targetUrl.replace(/\/t\/p\/[a-zA-Z0-9_-]+\//, '/t/p/w342/');
   }
 
-  // Natively resize IMDB (Amazon) images to avoid proxy blocks and save massive bandwidth
+  // ✅ Amazon/IMDB: native resize — no proxy hop needed
   if (targetUrl.includes('m.media-amazon.com/images/')) {
-    // Replace anything after _V1_ with SX300 to get a 300px wide image directly from Amazon
     return targetUrl.replace(/_V1_.*(\.jpg|\.png|\.webp)$/i, '_V1_SX300$1');
   }
 
-  // 1. pbcdnw (e.g. Hope: 97MP images) -> Photon handles huge resolutions without pixel limits
+  // ✅ pbcdnw: very large images — Photon CDN resize (no pixel limit, with quality)
   if (targetUrl.includes('pbcdnw.aoneroom.com')) {
     const cleanUrl = targetUrl.replace(/^https?:\/\//, '');
-    return `https://i0.wp.com/${cleanUrl}?w=300`;
+    return `https://i0.wp.com/${cleanUrl}?w=300&quality=80`;
   }
 
-  // 2. pacdn (e.g. Bigg Boss) and other CDNs -> wsrv.nl resizes to 300px WebP perfectly (no 403)
+  // ✅ pacdn / pbcdn / aoneroom CDNs: wsrv.nl resize (no 403, WebP output)
   const wsrvCdns = [
     'pacdn.aoneroom.com',
     'pbcdn.aoneroom.com',
@@ -62,12 +80,12 @@ export const getCachedImageUri = (url) => {
   const isWsrvCdn = wsrvCdns.some(cdn => targetUrl.includes(cdn));
   if (isWsrvCdn) {
     const encoded = encodeURIComponent(targetUrl);
-    return `https://images.weserv.nl/?url=${encoded}&w=300&output=webp&q=75&n=-1`;
+    return `https://images.weserv.nl/?url=${encoded}&w=300&output=webp&q=80&n=-1`;
   }
 
-  // All other URLs: return direct (reliable and fast for most CDNs)
+  // All other CDNs: load direct — fastest (no extra network hop)
   return targetUrl;
-};
+}
 
 // 🚀 Live VPS Backend (Contabo) — PRIMARY PRIORITY (Direct Instant Connection)
 const remoteUrls = [

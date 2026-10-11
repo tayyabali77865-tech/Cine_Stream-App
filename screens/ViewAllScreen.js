@@ -62,7 +62,7 @@ const MediaCard = memo(({ posterUri: initialPosterUri, rawPosterUrl, title, type
         style={styles.poster}
         contentFit="cover"
         transition={150}
-        priority="high"
+        priority="normal"
         cachePolicy="memory-disk"
         recyclingKey={posterUri}
         onError={() => {

@@ -174,8 +174,8 @@ const MediaCard = memo(({ item, onPress }) => {
           source={{ uri: posterUri }}
           style={styles.poster}
           contentFit="cover"
-          transition={150}
-          priority="high"
+          transition={100}
+          priority="normal"
           cachePolicy="memory-disk"
           recyclingKey={item.poster}
           onError={() => {

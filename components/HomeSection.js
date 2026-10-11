@@ -70,7 +70,7 @@ const MediaCardSmall = memo(({ item, onPress }) => {
         source={{ uri: posterUri }}
         style={styles.poster}
         contentFit="cover"
-        transition={300}
+        transition={100}
         priority="high"
         cachePolicy="memory-disk"
         recyclingKey={item.poster}
