@@ -21,6 +21,7 @@ const AD_CONFIG_REFRESH_INTERVAL = 5 * 60 * 1000;
 
 // Server URLs — matches apiService.js fallback chain
 const AD_CONFIG_URLS = [
+  'http://185.207.250.37:8000/api/ad-config',
   'https://cinestream-app-production-640b.up.railway.app/api/ad-config',
   'http://192.168.0.40:8000/api/ad-config',
   'http://10.0.2.2:8000/api/ad-config',

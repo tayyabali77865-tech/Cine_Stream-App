@@ -61,7 +61,7 @@ export async function registerForPushNotificationsAsync() {
 export async function sendPushTokenToServer(token) {
   if (!token) return;
 
-  const LIVE_URL = 'https://cinestream-app-production-640b.up.railway.app/api/register-push-token';
+  const LIVE_URL = 'http://185.207.250.37:8000/api/register-push-token';
   
   try {
     const response = await fetch(LIVE_URL, {
