@@ -445,6 +445,8 @@
       grid-column: 1 / -1;
     }
   </style>
+  <!-- CryptoJS for reliable HMAC signing over plain HTTP -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
 </head>
 <body>
 
@@ -693,17 +695,20 @@
       const decodedEndpoint = decodeURIComponent(endpoint.replace(/\+/g, ' '));
       const dataToSign = `/api${decodedEndpoint}${timestamp}`;
 
-      // Crypto signature equivalent in client browser JS
-      const encoder = new TextEncoder();
-      const keyData = encoder.encode(apiKeyInput);
-      const msgData = encoder.encode(dataToSign);
-
-      const cryptoKey = await window.crypto.subtle.importKey(
-        'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-      );
-      const signatureBuffer = await window.crypto.subtle.sign('HMAC', cryptoKey, msgData);
-      const hashArray = Array.from(new Uint8Array(signatureBuffer));
-      const signature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      let signature = '';
+      if (typeof CryptoJS !== 'undefined') {
+        signature = CryptoJS.HmacSHA256(dataToSign, apiKeyInput).toString(CryptoJS.enc.Hex);
+      } else if (window.crypto && window.crypto.subtle) {
+        const encoder = new TextEncoder();
+        const keyData = encoder.encode(apiKeyInput);
+        const msgData = encoder.encode(dataToSign);
+        const cryptoKey = await window.crypto.subtle.importKey(
+          'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+        );
+        const signatureBuffer = await window.crypto.subtle.sign('HMAC', cryptoKey, msgData);
+        const hashArray = Array.from(new Uint8Array(signatureBuffer));
+        signature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      }
 
       return {
         'Content-Type': 'application/json',
