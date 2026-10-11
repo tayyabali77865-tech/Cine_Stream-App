@@ -21,6 +21,29 @@ const {
 const db = require('./services/mongoService');
 const ScraperService = require('./services/scraperService');
 
+
+// Server-Side Poster Optimizer -- works for ALL APK versions (old + new)
+// Converts heavy CDN URLs to lightweight thumbnails before sending to client.
+// TMDB=w300 native, Amazon=SX300 native, heavy CDNs=wsrv.nl 300px WebP (~15KB)
+function optimizePosterUrl(url) {
+  if (!url || typeof url !== 'string') return 'https://placehold.co/300x450';
+  if (url.includes('placehold.co') || url.includes('placeholder')) return url;
+  if (url.startsWith('//')) url = 'https:' + url;
+  // TMDB native w300 resize
+  if (url.includes('image.tmdb.org/t/p/')) {
+    return url.replace(/\/t\/p\/[a-zA-Z0-9_-]+\//, '/t/p/w300/');
+  }
+  // Amazon/IMDB native SX300 resize
+  if (url.includes('m.media-amazon.com/images/')) {
+    return url.replace(/_V1_.*\.(jpg|png|webp)$/i, '_V1_SX300.$1');
+  }
+  // Heavy CDNs: proxy via wsrv.nl -> 300px WebP
+  const heavyCdns = ['pbcdn.aoneroom.com', 'aoneroom.com', 'cdnimg.akns-media.com', 'static.toiimg.com'];
+  if (heavyCdns.some(cdn => url.includes(cdn))) {
+    return 'https://images.weserv.nl/?url=' + encodeURIComponent(url) + '&w=300&output=webp&q=75&n=-1';
+  }
+  return url;
+}
 const app = express();
 app.set('trust proxy', 1); // Trust first proxy (Railway)
 const PORT = process.env.PORT || 8000;
@@ -325,7 +348,7 @@ app.get('/api/trending', async (req, res) => {
         const mediaList = dbResults.map(item => ({
           id: item.id,
           title: item.title ? item.title.trim() : 'Unknown Title',
-          poster: item.backdrop_path || item.poster || 'https://placehold.co/300x450',
+          poster: optimizePosterUrl(item.backdrop_path || item.poster),
           type: item.type === 'TV Show' ? 'TV Show' : 'Movie',
           releaseDate: item.releaseDate || 'N/A',
           country: item.country || '',
@@ -491,7 +514,7 @@ app.get('/api/trending', async (req, res) => {
     const mediaList = filteredItems.map((item) => ({
       id: item.id,
       title: item.title ? item.title.trim() : 'Unknown Title',
-      poster: item.backdrop_path || 'https://placehold.co/300x450',
+      poster: optimizePosterUrl(item.backdrop_path || item.poster),
       type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
       releaseDate: item.release_date || 'N/A',
       country: item.cn || '',
@@ -612,7 +635,7 @@ app.get('/api/search', async (req, res) => {
       .map(item => ({
         id: item.id,
         title: item.title ? item.title.trim() : 'Unknown Title',
-        poster: item.backdrop_path || 'https://placehold.co/300x450',
+        poster: optimizePosterUrl(item.backdrop_path || item.poster),
         type: item.media_type === 'tv' ? 'TV Show' : 'Movie',
         releaseDate: item.release_date || 'N/A',
         country: item.cn || '',
@@ -676,7 +699,7 @@ app.get('/api/details/:id', async (req, res) => {
         id: cachedItem.id,
         title: cachedItem.title ? cachedItem.title.trim() : 'Unknown Title',
         description: cachedItem.description || 'No description available.',
-        poster: cachedItem.backdrop_path || cachedItem.poster || 'https://placehold.co/300x450',
+        poster: optimizePosterUrl(cachedItem.backdrop_path || cachedItem.poster),
         type: cachedItem.type || 'Movie',
         seasons: cachedItem.seasons || null,
         audioLanguages: cachedItem.audioLanguages && cachedItem.audioLanguages.length > 0 ? cachedItem.audioLanguages : ['Original'],
@@ -713,7 +736,7 @@ app.get('/api/details/:id', async (req, res) => {
       id: item.id,
       title: item.title ? item.title.trim() : 'Unknown Title',
       description: item.dis || 'No description available.',
-      poster: item.backdrop_path || 'https://placehold.co/300x450',
+      poster: optimizePosterUrl(item.backdrop_path || item.poster),
       type: mediaType,
       seasons: seasonsList,
       audioLanguages: alternateDubs,
