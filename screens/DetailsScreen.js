@@ -8,7 +8,8 @@ import {
   Dimensions,
   FlatList,
   Animated,
-  Modal
+  Modal,
+  ActivityIndicator
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { apiService } from '../services/apiService';
@@ -20,6 +21,15 @@ import { useSmartlinkAd } from '../context/SmartlinkAdContext';
 
 const { width } = Dimensions.get('window');
 const gridItemWidth = (width - 80) / 5;
+
+const getGridLayout = (data, index) => {
+  const itemHeight = gridItemWidth + 10;
+  return {
+    length: itemHeight,
+    offset: itemHeight * Math.floor(index / 5),
+    index,
+  };
+};
 
 // ─── Pure Helpers (module-level — zero allocation per render) ────────────────
 
@@ -47,6 +57,72 @@ const EpisodeButton = memo(({ epNum, onPress, isGridItem }) => (
 
 // ─── Details Screen ───────────────────────────────────────────────────────────
 
+const AllEpisodesModal = React.memo(React.forwardRef(({ episodesForSelectedSeason, renderItem, gridItemWidth }, ref) => {
+  const [visible, setVisible] = React.useState(false);
+  const [listReady, setListReady] = React.useState(false);
+
+  const handleClose = React.useCallback(() => {
+    setVisible(false);
+    setTimeout(() => {
+      setListReady(false);
+    }, 350);
+  }, []);
+
+  React.useImperativeHandle(ref, () => ({
+    open: () => setVisible(true),
+    close: handleClose
+  }));
+
+  const getGridLayout = React.useCallback((data, index) => {
+    const itemHeight = gridItemWidth + 10;
+    return {
+      length: itemHeight,
+      offset: itemHeight * Math.floor(index / 5),
+      index,
+    };
+  }, [gridItemWidth]);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={handleClose}
+      onShow={() => setListReady(true)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>All Episodes</Text>
+            <TouchableOpacity onPress={handleClose}>
+              <Ionicons name="close" size={28} color="#fff" />
+            </TouchableOpacity>
+          </View>
+          {listReady ? (
+          <FlatList
+            data={episodesForSelectedSeason}
+            keyExtractor={(item) => String(item)}
+            numColumns={5}
+            contentContainerStyle={{ paddingBottom: 40 }}
+            columnWrapperStyle={{ gap: 10, marginBottom: 10 }}
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={3}
+            removeClippedSubviews={true}
+            getItemLayout={getGridLayout}
+            renderItem={renderItem}
+          />
+          ) : (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <ActivityIndicator size="large" color="#E50914" />
+            </View>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}));
+
 export default function DetailsScreen({ route, navigation }) {
   const isFocused = useIsFocused();
   const { id } = route.params;
@@ -56,8 +132,9 @@ export default function DetailsScreen({ route, navigation }) {
   const [showSeasonDropdown, setShowSeasonDropdown] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showAllEpisodesModal, setShowAllEpisodesModal] = useState(false);
   const [showSeeMore, setShowSeeMore] = useState(false);
+  
+  const allEpisodesModalRef = useRef(null);
   
   const { showAdIfReady } = useSmartlinkAd();
 
@@ -174,9 +251,33 @@ export default function DetailsScreen({ route, navigation }) {
     return episodePressHandlersRef.current[key];
   }, [navigation, details, selectedSeason, showAdIfReady]);
 
+  const gridEpisodePressHandlersRef = useRef({});
+
+  const getGridEpisodeHandler = useCallback((epNum) => {
+    const key = `s${selectedSeason?.se}_e${epNum}`;
+    if (!gridEpisodePressHandlersRef.current[key]) {
+      gridEpisodePressHandlersRef.current[key] = () => {
+        allEpisodesModalRef.current?.close();
+        setTimeout(() => {
+          getEpisodeHandler(epNum)();
+        }, 300);
+      };
+    }
+    return gridEpisodePressHandlersRef.current[key];
+  }, [selectedSeason, getEpisodeHandler]);
+
+  const renderGridEpisodeItem = useCallback(({ item: epNum }) => (
+    <EpisodeButton
+      epNum={epNum}
+      isGridItem={true}
+      onPress={getGridEpisodeHandler(epNum)}
+    />
+  ), [getGridEpisodeHandler]);
+
   // Clear handler cache when season changes to avoid stale closures
   useEffect(() => {
     episodePressHandlersRef.current = {};
+    gridEpisodePressHandlersRef.current = {};
   }, [selectedSeason]);
 
   // ── Loading Skeleton ──────────────────────────────────────────────────────
@@ -309,26 +410,31 @@ export default function DetailsScreen({ route, navigation }) {
 
             {/* Horizontal Scrolling Episodes List */}
             <Text style={styles.epTitle}>Episodes</Text>
-            <ScrollView
+            <FlatList
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.episodeScrollRow}
-            >
-              <TouchableOpacity
-                style={[styles.episodeSquare, { backgroundColor: '#E50914' }]}
-                activeOpacity={0.7}
-                onPress={() => setShowAllEpisodesModal(true)}
-              >
-                <Text style={[styles.episodeSquareText, { color: '#ffffff' }]}>All</Text>
-              </TouchableOpacity>
-              {episodesForSelectedSeason.map((epNum) => (
+              data={episodesForSelectedSeason}
+              keyExtractor={(item) => String(item)}
+              initialNumToRender={15}
+              maxToRenderPerBatch={15}
+              windowSize={5}
+              ListHeaderComponent={
+                <TouchableOpacity
+                  style={[styles.episodeSquare, { backgroundColor: '#E50914' }]}
+                  activeOpacity={0.7}
+                  onPress={() => allEpisodesModalRef.current?.open()}
+                >
+                  <Text style={[styles.episodeSquareText, { color: '#ffffff' }]}>All</Text>
+                </TouchableOpacity>
+              }
+              renderItem={({ item: epNum }) => (
                 <EpisodeButton
-                  key={epNum}
                   epNum={epNum}
                   onPress={getEpisodeHandler(epNum)}
                 />
-              ))}
-            </ScrollView>
+              )}
+            />
           </View>
         )}
 
@@ -368,36 +474,12 @@ export default function DetailsScreen({ route, navigation }) {
     </ScrollView>
 
       {details?.seasons?.length > 0 && (
-        <Modal
-          visible={showAllEpisodesModal}
-          transparent={true}
-          animationType="none"
-          onRequestClose={() => setShowAllEpisodesModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>All Episodes</Text>
-                <TouchableOpacity onPress={() => setShowAllEpisodesModal(false)}>
-                  <Ionicons name="close" size={28} color="#fff" />
-                </TouchableOpacity>
-              </View>
-              <ScrollView contentContainerStyle={styles.allEpisodesGrid}>
-                {episodesForSelectedSeason.map((epNum) => (
-                  <EpisodeButton
-                    key={epNum}
-                    epNum={epNum}
-                    isGridItem={true}
-                    onPress={() => {
-                      setShowAllEpisodesModal(false);
-                      getEpisodeHandler(epNum)();
-                    }}
-                  />
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+        <AllEpisodesModal
+          ref={allEpisodesModalRef}
+          episodesForSelectedSeason={episodesForSelectedSeason}
+          gridItemWidth={gridItemWidth}
+          renderItem={renderGridEpisodeItem}
+        />
       )}
 
       {/* ── Season Selection Modal ── */}

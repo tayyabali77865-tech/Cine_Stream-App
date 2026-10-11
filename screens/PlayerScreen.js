@@ -12,7 +12,8 @@ import {
   Alert,
   ScrollView,
   Dimensions,
-  Platform
+  Platform,
+  FlatList
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { apiService } from '../services/apiService';
@@ -29,6 +30,15 @@ import { useDownloadContext } from '../context/DownloadContext';
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 const gridItemWidth = (SCREEN_WIDTH - 80) / 5;
 const VIDEO_HEIGHT = Math.round(SCREEN_HEIGHT * 0.40);
+
+const getGridLayout = (data, index) => {
+  const itemHeight = gridItemWidth + 10;
+  return {
+    length: itemHeight,
+    offset: itemHeight * Math.floor(index / 5),
+    index,
+  };
+};
 
 // Helper: format milliseconds to hh:mm:ss / mm:ss
 const formatTime = (ms) => {
@@ -146,6 +156,91 @@ function qualityReducer(state, action) {
 }
 
 // ─── Player Screen ────────────────────────────────────────────────────────────
+const EpisodeItem = React.memo(({ epNum, isCurrent, onPress, isGridItem, gridWidth }) => (
+  <TouchableOpacity
+    style={[
+      styles.episodeSquare,
+      isGridItem && { width: gridWidth, height: gridWidth },
+      isCurrent && { borderColor: '#E50914', backgroundColor: 'rgba(229, 9, 20, 0.1)' }
+    ]}
+    activeOpacity={0.7}
+    onPress={() => onPress(epNum)}
+  >
+    <Text style={[styles.episodeSquareText, isCurrent && { color: '#E50914' }]}>
+      {String(epNum).padStart(2, '0')}
+    </Text>
+  </TouchableOpacity>
+), (prevProps, nextProps) => {
+  return prevProps.epNum === nextProps.epNum &&
+         prevProps.isCurrent === nextProps.isCurrent &&
+         prevProps.isGridItem === nextProps.isGridItem;
+});
+
+const AllEpisodesModal = React.memo(React.forwardRef(({ episodesForSelectedSeason, renderItem, gridItemWidth }, ref) => {
+  const [visible, setVisible] = React.useState(false);
+  const [listReady, setListReady] = React.useState(false);
+
+  const handleClose = React.useCallback(() => {
+    setVisible(false);
+    setTimeout(() => {
+      setListReady(false);
+    }, 350);
+  }, []);
+
+  React.useImperativeHandle(ref, () => ({
+    open: () => setVisible(true),
+    close: handleClose
+  }));
+
+  const getGridLayout = React.useCallback((data, index) => {
+    const itemHeight = gridItemWidth + 10;
+    return {
+      length: itemHeight,
+      offset: itemHeight * Math.floor(index / 5),
+      index,
+    };
+  }, [gridItemWidth]);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={handleClose}
+      onShow={() => setListReady(true)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>All Episodes</Text>
+            <TouchableOpacity onPress={handleClose}>
+              <Ionicons name="close" size={28} color="#fff" />
+            </TouchableOpacity>
+          </View>
+          {listReady ? (
+          <FlatList
+            data={episodesForSelectedSeason}
+            keyExtractor={(item) => String(item)}
+            numColumns={5}
+            contentContainerStyle={{ paddingBottom: 40 }}
+            columnWrapperStyle={{ gap: 10, marginBottom: 10 }}
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={3}
+            removeClippedSubviews={true}
+            getItemLayout={getGridLayout}
+            renderItem={renderItem}
+          />
+          ) : (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <ActivityIndicator size="large" color="#E50914" />
+            </View>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}));
 
 export default function PlayerScreen({ route, navigation }) {
   const { id, title, season, episode, defaultLanguage, seasons } = route.params;
@@ -178,7 +273,7 @@ export default function PlayerScreen({ route, navigation }) {
   const [localSeasons, setLocalSeasons] = React.useState(seasons || null);
   const [showSeasonSelector, setShowSeasonSelector] = React.useState(false);
   const [showEpisodeSelector, setShowEpisodeSelector] = React.useState(false);
-  const [showAllEpisodesModal, setShowAllEpisodesModal] = React.useState(false);
+  const allEpisodesModalRef = useRef(null);
 
   const [playbackStatus, setPlaybackStatus] = React.useState(null);
   const [controlsVisible, setControlsVisible] = React.useState(true);
@@ -226,6 +321,36 @@ export default function PlayerScreen({ route, navigation }) {
     for (let i = 1; i <= total; i++) eps.push(String(i));
     return eps;
   }, [localSeasons, currentSeason]);
+
+  const handleHorizontalEpisodePress = useCallback((ep) => {
+    showAdIfReady(() => setCurrentEpisode(ep), 'PLAYER_ACTION');
+  }, [showAdIfReady]);
+
+  const handleGridEpisodePress = useCallback((ep) => {
+    allEpisodesModalRef.current?.close();
+    setTimeout(() => {
+      showAdIfReady(() => setCurrentEpisode(ep), 'PLAYER_ACTION');
+    }, 300);
+  }, [showAdIfReady]);
+
+  const renderHorizontalEpisode = useCallback(({ item: epNum }) => (
+    <EpisodeItem
+      epNum={epNum}
+      isCurrent={String(currentEpisode) === String(epNum)}
+      onPress={handleHorizontalEpisodePress}
+      isGridItem={false}
+    />
+  ), [currentEpisode, handleHorizontalEpisodePress]);
+
+  const renderGridEpisode = useCallback(({ item: epNum }) => (
+    <EpisodeItem
+      epNum={epNum}
+      isCurrent={String(currentEpisode) === String(epNum)}
+      onPress={handleGridEpisodePress}
+      isGridItem={true}
+      gridWidth={gridItemWidth}
+    />
+  ), [currentEpisode, handleGridEpisodePress]);
 
   // ── Fetch Details for Deep Links ──────────────────────────────────────────
   useEffect(() => {
@@ -900,34 +1025,26 @@ export default function PlayerScreen({ route, navigation }) {
               </TouchableOpacity>
               
               <Text style={{ color: '#9CA3AF', fontSize: 13, fontWeight: '600', textTransform: 'uppercase', marginBottom: 10 }}>Episodes</Text>
-              <ScrollView
+              <FlatList
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.episodeScrollRow}
-              >
-                <TouchableOpacity
-                  style={[styles.episodeSquare, { backgroundColor: '#E50914' }]}
-                  activeOpacity={0.7}
-                  onPress={() => setShowAllEpisodesModal(true)}
-                >
-                  <Text style={[styles.episodeSquareText, { color: '#ffffff' }]}>All</Text>
-                </TouchableOpacity>
-                {episodesForSelectedSeason.map((epNum) => (
+                data={episodesForSelectedSeason}
+                keyExtractor={(item) => String(item)}
+                initialNumToRender={15}
+                maxToRenderPerBatch={15}
+                windowSize={5}
+                ListHeaderComponent={
                   <TouchableOpacity
-                    key={epNum}
-                    style={[
-                      styles.episodeSquare, 
-                      String(currentEpisode) === String(epNum) && { borderColor: '#E50914', backgroundColor: 'rgba(229, 9, 20, 0.1)' }
-                    ]}
+                    style={[styles.episodeSquare, { backgroundColor: '#E50914' }]}
                     activeOpacity={0.7}
-                    onPress={() => showAdIfReady(() => setCurrentEpisode(epNum), 'PLAYER_ACTION')}
+                    onPress={() => allEpisodesModalRef.current?.open()}
                   >
-                    <Text style={[styles.episodeSquareText, String(currentEpisode) === String(epNum) && { color: '#E50914' }]}>
-                      {String(epNum).padStart(2, '0')}
-                    </Text>
+                    <Text style={[styles.episodeSquareText, { color: '#ffffff' }]}>All</Text>
                   </TouchableOpacity>
-                ))}
-              </ScrollView>
+                }
+                renderItem={renderHorizontalEpisode}
+              />
             </View>
           )}
         </ScrollView>
@@ -1042,45 +1159,12 @@ export default function PlayerScreen({ route, navigation }) {
         </View>
       </Modal>
 
-      {/* ── All Episodes Modal ── */}
-      <Modal
-        visible={showAllEpisodesModal}
-        transparent={true}
-        animationType="none"
-        onRequestClose={() => setShowAllEpisodesModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>All Episodes</Text>
-              <TouchableOpacity onPress={() => setShowAllEpisodesModal(false)}>
-                <Ionicons name="close" size={28} color="#fff" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView contentContainerStyle={styles.allEpisodesGrid}>
-              {episodesForSelectedSeason.map((epNum) => (
-                <TouchableOpacity
-                  key={epNum}
-                  style={[
-                    styles.episodeSquare,
-                    { width: gridItemWidth, height: gridItemWidth },
-                    String(currentEpisode) === String(epNum) && { borderColor: '#E50914', backgroundColor: 'rgba(229, 9, 20, 0.1)' }
-                  ]}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    setShowAllEpisodesModal(false);
-                    showAdIfReady(() => setCurrentEpisode(epNum), 'PLAYER_ACTION');
-                  }}
-                >
-                  <Text style={[styles.episodeSquareText, String(currentEpisode) === String(epNum) && { color: '#E50914' }]}>
-                    {String(epNum).padStart(2, '0')}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      <AllEpisodesModal
+        ref={allEpisodesModalRef}
+        episodesForSelectedSeason={episodesForSelectedSeason}
+        renderItem={renderGridEpisode}
+        gridItemWidth={gridItemWidth}
+      />
     </View>
   );
 }

@@ -46,15 +46,24 @@ export const getCachedImageUri = (url) => {
   return targetUrl;
 };
 
-const API_FALLBACKS = [
-  deployedApiBaseUrl ? `${normalizeBaseUrl(deployedApiBaseUrl)}/api` : null,
-  'https://cinestream-app-production-640b.up.railway.app/api',
+// 🏠 Localhost URLs — highest priority (try local server first)
+const localUrls = [
   `http://192.168.0.40:8000/api`,
   `http://${hostIP}:8000/api`,
   `http://10.0.2.2:8000/api`,
+];
+
+// ☁️ Live/deployed URLs — fallback only when localhost is unreachable
+const remoteUrls = [
+  deployedApiBaseUrl ? `${normalizeBaseUrl(deployedApiBaseUrl)}/api` : null,
+  'https://cinestream-app-production-640b.up.railway.app/api',
 ].filter(Boolean);
 
-const preferredBaseUrl = API_FALLBACKS[0];
+// Localhost first, then remote — deduped
+const API_FALLBACKS = [...new Set([...localUrls, ...remoteUrls])];
+
+// Always start with localhost
+const preferredBaseUrl = `http://192.168.0.40:8000/api`;
 let activeBaseUrl = preferredBaseUrl;
 
 // ─── Netmirror Mirrors Manager (Client-side bypass) ───────────────────────────
@@ -173,9 +182,12 @@ const fetchWithTimeout = async (url, opts = {}, timeout = 35000) => {
 const checkHealth = async (baseUrl) => {
   if (isUrlOnCooldown(baseUrl)) return false;
   try {
+    // baseUrl is e.g. "http://192.168.0.40:8000/api"
+    // The server has /api/health exempt from HMAC
+    const healthUrl = baseUrl.endsWith('/api') ? `${baseUrl}/health` : `${baseUrl}/api/health`;
     const res = await Promise.race([
-      fetch(`${baseUrl}/health`),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 20000)) // 20 seconds timeout
+      fetch(healthUrl),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000))
     ]);
     if (res.ok) return true;
     markUrlFailed(baseUrl);
@@ -231,26 +243,31 @@ async function customFetch(endpoint, options = {}) {
   }
 
   if (candidateUrls.length > 0) {
-    const scanPromises = candidateUrls.map(async (url) => {
+    // Scan by priority order (local first, then remote) - do not use Promise.any which gives win to fastest remote
+    let workingUrl = null;
+    for (const url of candidateUrls) {
       const online = await checkHealth(url);
-      if (online) return url;
-      throw new Error('Offline');
-    });
+      if (online) {
+        workingUrl = url;
+        break;
+      }
+    }
 
-    try {
-      const workingUrl = await Promise.any(scanPromises);
+    if (workingUrl) {
       activeBaseUrl = workingUrl;
       console.log(`🎯 Switched to: ${activeBaseUrl}`);
-      const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 35000);
-      
-      if ([502, 503, 504].includes(response.status)) {
-        throw new Error(`Server returned ${response.status} Bad Gateway/Unavailable`);
+      try {
+        const response = await fetchWithTimeout(`${activeBaseUrl}${endpoint}`, optsWithHeaders, 35000);
+        
+        if ([502, 503, 504].includes(response.status)) {
+          throw new Error(`Server returned ${response.status} Bad Gateway/Unavailable`);
+        }
+        
+        return response;
+      } catch (reqErr) {
+        markUrlFailed(activeBaseUrl);
+        console.warn(`⚠️ Request to ${activeBaseUrl} failed: ${reqErr.message}`);
       }
-      
-      // ✅ Return any other HTTP response
-      return response;
-    } catch (_) {
-      // All failed at network level
     }
   }
 

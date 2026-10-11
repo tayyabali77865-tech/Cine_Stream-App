@@ -1,6 +1,7 @@
 {
   "name": "netmirror-stream-app",
   "version": "1.0.0",
+  "main": "expo/AppEntry.js",
   "scripts": {
     "start": "node server.js",
     "expo-start": "expo start",

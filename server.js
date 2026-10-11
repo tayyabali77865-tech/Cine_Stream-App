@@ -270,6 +270,11 @@ async function fetchFromNetmirrorWithRetry(endpoint) {
   });
 }
 
+// Health check endpoints for app connectivity verification
+app.get(['/health', '/api/health'], (req, res) => {
+  res.status(200).json({ status: 'ok', server: 'local', timestamp: Date.now() });
+});
+
 /**
  * 1. Fetch Trending/Latest Media
  */
@@ -284,36 +289,37 @@ app.get('/api/trending', async (req, res) => {
     const Media = require('./models/Media');
     
     const listDoc = await MediaList.findOne({ category, filter }).lean();
-    let dbResults = null;
+    // Optional DB override: only use DB if explicitly set or if Netmirror fails, otherwise fetch live from Netmirror
+    const useLiveCatalog = process.env.USE_LIVE_CATALOG !== 'false';
     let localPages = 0;
-    
-    if (listDoc && listDoc.items && listDoc.items.length > 0) {
-      localPages = Math.ceil(listDoc.items.length / 30);
-      const startIdx = page * 30;
-      const endIdx = startIdx + 30;
-      const pageIds = listDoc.items.slice(startIdx, endIdx);
-      
-      if (pageIds.length > 0) {
-        const unorderedMedia = await Media.find({ id: { $in: pageIds } }).lean();
-        // Reorder to match exact scraped order
-        dbResults = pageIds.map(id => unorderedMedia.find(m => m.id === id)).filter(Boolean);
+    if (!useLiveCatalog) {
+      if (listDoc && listDoc.items && listDoc.items.length > 0) {
+        localPages = Math.ceil(listDoc.items.length / 30);
+        const startIdx = page * 30;
+        const endIdx = startIdx + 30;
+        const pageIds = listDoc.items.slice(startIdx, endIdx);
+        
+        if (pageIds.length > 0) {
+          const unorderedMedia = await Media.find({ id: { $in: pageIds } }).lean();
+          dbResults = pageIds.map(id => unorderedMedia.find(m => m.id === id)).filter(Boolean);
+        }
       }
-    }
-    if (dbResults && dbResults.length > 0) {
-      const mediaList = dbResults.map(item => ({
-        id: item.id,
-        title: item.title ? item.title.trim() : 'Unknown Title',
-        poster: item.backdrop_path || item.poster || 'https://placehold.co/300x450',
-        type: item.type === 'TV Show' ? 'TV Show' : 'Movie',
-        releaseDate: item.releaseDate || 'N/A',
-        country: item.country || '',
-        channel: '',
-        rating: parseFloat(item.rating) || 0,
-        badge: item.badge || '',
-        isCustom: false
-      }));
-      res.setHeader('X-Cache-Status', 'DB_HIT');
-      return res.json(mediaList);
+      if (dbResults && dbResults.length > 0) {
+        const mediaList = dbResults.map(item => ({
+          id: item.id,
+          title: item.title ? item.title.trim() : 'Unknown Title',
+          poster: item.backdrop_path || item.poster || 'https://placehold.co/300x450',
+          type: item.type === 'TV Show' ? 'TV Show' : 'Movie',
+          releaseDate: item.releaseDate || 'N/A',
+          country: item.country || '',
+          channel: '',
+          rating: parseFloat(item.rating) || 0,
+          badge: item.badge || '',
+          isCustom: false
+        }));
+        res.setHeader('X-Cache-Status', 'DB_HIT');
+        return res.json(mediaList);
+      }
     }
 
     let results = [];

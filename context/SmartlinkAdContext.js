@@ -16,9 +16,9 @@ const GLOBAL_TIMER_KEY = '@smartlink_global_timer';
 const PLAYER_TIMER_KEY = '@smartlink_player_timer';
 
 const SMARTLINK_URLS = [
-  'https://floodingfibre.com/bk04dped?key=c6ad1ebb2747d9a055c2b772fd444eb7',
-  'https://floodingfibre.com/hbt4r32b?key=948a450a348f4cf449c6a66d46e8d422',
-  'https://floodingfibre.com/jtm9mjv7i?key=0d4f7f0be23c88461796ee7296136ac4'
+  'https://uplcm.com/4/11503004',
+  'https://uplcm.com/4/11503020',
+  'https://uplcm.com/4/11503019'
 ];
 
 export function SmartlinkAdProvider({ children }) {
@@ -159,16 +159,22 @@ export function SmartlinkAdProvider({ children }) {
     return () => clearInterval(ticker);
   }, []);
 
+  // Reset player timer (call on episode change to ensure ad fires)
+  const resetPlayerTimer = () => {
+    playerTimerRef.current = PLAYER_INTERVAL;
+    setPlayerTimer(PLAYER_INTERVAL);
+  };
+
   // Intercept button clicks
   const showAdIfReady = (actionFn, actionType = 'GENERAL', executeInstantly = false) => {
     if (actionType === 'PLAYER_ACTION') {
-      if (playerTimerRef.current < 60) {
-        // Less than 1 minute remaining for automatic popup, skip this click ad
-        if (actionFn) actionFn();
-        return;
-      }
+      // Always show ad on episode change, reset timer after
+      triggerAd(actionFn, executeInstantly);
+      playerTimerRef.current = PLAYER_INTERVAL;
+      setPlayerTimer(PLAYER_INTERVAL);
+      return;
     }
-    // No cooldown for click ads, always trigger
+    // No cooldown for other click ads, always trigger
     triggerAd(actionFn, executeInstantly);
   };
 
@@ -187,7 +193,7 @@ export function SmartlinkAdProvider({ children }) {
   };
 
   return (
-    <SmartlinkAdContext.Provider value={{ showAdIfReady, setIsPlayerActive }}>
+    <SmartlinkAdContext.Provider value={{ showAdIfReady, setIsPlayerActive, resetPlayerTimer }}>
       {children}
       <Modal
         visible={isAdVisible}

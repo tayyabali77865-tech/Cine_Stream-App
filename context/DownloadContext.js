@@ -1,7 +1,15 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 import * as FileSystem from 'expo-file-system';
-import { ToastAndroid } from 'react-native';
-import notifee, { AndroidImportance } from '@notifee/react-native';
+import { ToastAndroid, Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
 
 const DownloadContext = createContext(null);
 
@@ -14,16 +22,17 @@ export function DownloadProvider({ children }) {
   const downloadStatsRef = useRef({});
 
   useEffect(() => {
-    async function setupNotifee() {
-      await notifee.requestPermission();
-      await notifee.createChannel({
-        id: 'downloads',
-        name: 'Download Progress',
-        vibration: false,
-        importance: AndroidImportance.LOW, // Low importance so it doesn't pop-up heads-up repeatedly
-      });
+    async function setupNotifications() {
+      await Notifications.requestPermissionsAsync();
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('downloads', {
+          name: 'Download Progress',
+          importance: Notifications.AndroidImportance.LOW,
+          vibrationPattern: [0],
+        });
+      }
     }
-    setupNotifee();
+    setupNotifications();
   }, []);
 
   const formatTime = (seconds) => {
@@ -56,17 +65,16 @@ export function DownloadProvider({ children }) {
     // Create Notification
     let notificationId = null;
     try {
-      notificationId = await notifee.displayNotification({
-        title: `Downloading ${mediaInfo.title}...`,
-        body: 'Starting...',
-        android: {
-          channelId: 'downloads',
-          onlyAlertOnce: true,
-          progress: { max: 100, current: 0 },
+      notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `Downloading ${mediaInfo.title}...`,
+          body: 'Starting...',
+          autoDismiss: false,
         },
+        trigger: null,
       });
     } catch (e) {
-      console.error('[Notifee] Error creating notification:', e);
+      console.error('[ExpoNotifications] Error creating notification:', e);
     }
 
     downloadStatsRef.current[downloadId] = {
@@ -108,16 +116,19 @@ export function DownloadProvider({ children }) {
         // Update Notification
         if (stats.notificationId) {
           const p = Math.round(progress * 100);
-          notifee.displayNotification({
-            id: stats.notificationId,
-            title: `Downloading ${mediaInfo.title}`,
-            body: `${p}% • ${remainingTime} left`,
-            android: {
-              channelId: 'downloads',
-              onlyAlertOnce: true,
-              progress: { max: 100, current: p },
-            },
-          }).catch(() => {});
+          const lastP = stats.lastNotificationProgress || 0;
+          if (p >= lastP + 10 || p === 100) {
+            stats.lastNotificationProgress = p;
+            Notifications.scheduleNotificationAsync({
+              identifier: stats.notificationId,
+              content: {
+                title: `Downloading ${mediaInfo.title}`,
+                body: `${p}% • ${remainingTime} left`,
+                autoDismiss: false,
+              },
+              trigger: null,
+            }).catch(() => {});
+          }
         }
 
       } else {
@@ -163,11 +174,13 @@ export function DownloadProvider({ children }) {
         // Update Notification to Complete
         const nid = downloadStatsRef.current[downloadId]?.notificationId;
         if (nid) {
-          notifee.displayNotification({
-            id: nid,
-            title: 'Download Complete',
-            body: `${mediaInfo.title} is ready to watch offline!`,
-            android: { channelId: 'downloads' },
+          Notifications.scheduleNotificationAsync({
+            identifier: nid,
+            content: {
+              title: 'Download Complete',
+              body: `${mediaInfo.title} is ready to watch offline!`,
+            },
+            trigger: null,
           });
         }
       } else {
@@ -183,11 +196,13 @@ export function DownloadProvider({ children }) {
       // Error Notification
       const nid = downloadStatsRef.current[downloadId]?.notificationId;
       if (nid) {
-        notifee.displayNotification({
-          id: nid,
-          title: 'Download Failed',
-          body: `Failed to download ${mediaInfo.title}`,
-          android: { channelId: 'downloads' },
+        Notifications.scheduleNotificationAsync({
+          identifier: nid,
+          content: {
+            title: 'Download Failed',
+            body: `Failed to download ${mediaInfo.title}`,
+          },
+          trigger: null,
         });
       }
     }
@@ -203,7 +218,7 @@ export function DownloadProvider({ children }) {
     // Cancel Notification
     const nid = downloadStatsRef.current[downloadId]?.notificationId;
     if (nid) {
-      notifee.cancelNotification(nid);
+      Notifications.dismissNotificationAsync(nid);
     }
     
     delete downloadStatsRef.current[downloadId];
