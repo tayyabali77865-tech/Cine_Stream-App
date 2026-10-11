@@ -45,8 +45,21 @@ export const getCachedImageUri = (url) => {
     return targetUrl.replace(/_V1_.*(\.jpg|\.png|\.webp)$/i, '_V1_SX300$1');
   }
 
-  // Directly return the target URL for everything else to ensure they always load.
-  // External proxies (wsrv, photon, statically) have proven unreliable and cause missing images.
+  // Heavy external CDNs (pbcdn, aoneroom, etc): proxy via wsrv.nl
+  // wsrv.nl resizes to 300px wide WebP: reduces ~400KB images down to ~20KB
+  const heavyCdns = [
+    'pbcdn.aoneroom.com',
+    'aoneroom.com',
+    'cdnimg.akns-media.com',
+    'static.toiimg.com',
+  ];
+  const isHeavyCdn = heavyCdns.some(cdn => targetUrl.includes(cdn));
+  if (isHeavyCdn) {
+    const encoded = encodeURIComponent(targetUrl);
+    return `https://images.weserv.nl/?url=${encoded}&w=300&output=webp&q=75&n=-1`;
+  }
+
+  // All other URLs: return direct (reliable and fast for most CDNs)
   return targetUrl;
 };
 
