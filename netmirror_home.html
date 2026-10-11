@@ -623,8 +623,9 @@
           <div class="editor-card" style="border-left:4px solid #00E676; margin-top:20px; padding-top:20px; border-top:1px solid #1a1a24;">
             <div class="editor-label" style="color:#00E676; font-size:16px;">📲 OTA App Auto-Updater (APK Link)</div>
             <div style="font-size:12px; color:#9CA3AF; margin-bottom:12px;">Paste direct APK link (e.g., Github Releases). App will silently download and prompt user to install. Leave blank to disable.</div>
-            <input type="text" id="appUpdateLink" placeholder="https://..." 
-              style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;">
+            <input type="text" id="appUpdateLink" placeholder="https://github.com/.../releases/download/.../app.apk" 
+              style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;margin-bottom:12px;">
+            <button class="btn" onclick="saveOtaUpdateOnly()" style="width:100%;padding:13px;font-size:14px;font-weight:700;background:#00E676;color:#000;">🚀 Save & Broadcast Update to All Users</button>
           </div>
 
           <!-- Send Push Notification -->
@@ -1175,28 +1176,15 @@
       if (!confirm(`Are you sure you want to broadcast this notification to ALL users?\n\nTitle: ${title}`)) return;
 
       try {
-        const timestamp = String(Date.now());
-        const secretKey = document.getElementById('authKey').value || 'cinestream_secret_secure_key_2026';
-        const dataToSign = `/api/send-push-notification${timestamp}`;
-        const encoder = new TextEncoder();
-        const keyData = encoder.encode(secretKey);
-        const msgData = encoder.encode(dataToSign);
-        const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-        const sigBuffer = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
-        const signature = Array.from(new Uint8Array(sigBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-
+        const headers = await makeHeaders('/send-push-notification');
         const res = await fetch('/api/send-push-notification', {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'X-Signature': signature,
-            'X-Timestamp': timestamp
-          },
+          headers,
           body: JSON.stringify({ title, message, imageUrl })
         });
         const data = await res.json();
         if (data.success) {
-          showToast(`Notification sent successfully to ${data.count || 0} devices!`);
+          showToast(`📢 Notification sent to ${data.count || 0} devices!`);
           document.getElementById('pushTitle').value = '';
           document.getElementById('pushMessage').value = '';
           document.getElementById('pushImageUrl').value = '';
@@ -1208,7 +1196,17 @@
       }
     }
 
-    async function saveAdConfig() {
+    async function saveOtaUpdateOnly() {
+      const link = document.getElementById('appUpdateLink').value.trim();
+      if (!link) {
+        if (!confirm('APK link is empty. This will disable OTA auto-updates for users. Continue?')) return;
+      } else {
+        if (!confirm(`Broadcast OTA update to all users with APK link:\n${link}`)) return;
+      }
+      await saveAdConfig(true);
+    }
+
+    async function saveAdConfig(isOtaOnly = false) {
       const payload = {
         adsEnabled: document.getElementById('adToggle').checked,
         interstitialCloseDelay: parseInt(document.getElementById('adCloseDelay').value) || 5,
@@ -1223,37 +1221,27 @@
         interstitialScript: document.getElementById('adInterstitialScript').value,
         backgroundScript: document.getElementById('adBackgroundScript').value,
         rewardedScript: document.getElementById('adRewardedScript').value,
-        appUpdateLink: document.getElementById('appUpdateLink').value,
+        appUpdateLink: document.getElementById('appUpdateLink').value.trim(),
       };
 
       try {
-        const timestamp = String(Date.now());
-        // Build HMAC signature using Web Crypto API (same as apiService.js)
-        const secretKey = 'cinestream_secret_secure_key_2026';
-        const dataToSign = `/api/ad-config/update${timestamp}`;
-        const encoder = new TextEncoder();
-        const keyData = encoder.encode(secretKey);
-        const msgData = encoder.encode(dataToSign);
-        const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-        const sigBuffer = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
-        const signature = Array.from(new Uint8Array(sigBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-
+        const headers = await makeHeaders('/ad-config/update');
         const res = await fetch('/api/ad-config/update', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Signature': signature,
-            'X-Timestamp': timestamp
-          },
+          headers,
           body: JSON.stringify(payload)
         });
         if (res.ok) {
-          showToast(payload.adsEnabled ? '✅ Ads ENABLED for all users!' : '🔕 Ads DISABLED for all users!');
+          if (isOtaOnly) {
+            showToast(payload.appUpdateLink ? '🚀 OTA Update link saved & active for all users!' : '⚪ OTA Updates disabled');
+          } else {
+            showToast('💾 All configurations saved successfully!');
+          }
         } else {
-          showToast('❌ Failed to save ad config', true);
+          showToast('❌ Failed to save configuration', true);
         }
       } catch (e) {
-        showToast('❌ Network error saving ad config', true);
+        showToast('❌ Network error saving configuration', true);
       }
     }
   </script>
