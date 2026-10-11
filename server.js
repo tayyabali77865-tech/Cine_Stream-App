@@ -147,10 +147,14 @@ app.set('trust proxy', 1);
 
 // Rate Limiting
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 mins
-  max: parseInt(process.env.RATE_LIMIT_MAX || '100'),
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'), // 1 min window
+  max: parseInt(process.env.RATE_LIMIT_MAX || '1500'), // 1500 requests per min
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    // Never rate-limit image proxy, health checks, or ad config
+    return req.path.startsWith('/img') || req.path === '/health' || req.path === '/ad-config';
+  },
   message: { error: 'Too many requests from this IP, please try again later.' }
 });
 app.use('/api/', limiter);
