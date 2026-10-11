@@ -5,7 +5,7 @@ const axios = require('axios');
 const http = require('http');
 const https = require('https');
 axios.defaults.httpAgent = new http.Agent({ keepAlive: true });
-axios.defaults.httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false });
+axios.defaults.httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: true });
 const cheerio = require('cheerio');
 const crypto = require('crypto');
 const helmet = require('helmet');
@@ -88,8 +88,20 @@ app.use(helmet({
   contentSecurityPolicy: false
 }));
 app.use(compression());
+const ALLOWED_ORIGINS_BACKEND = [
+  'https://cinestream.watch',
+  'https://www.cinestream.watch',
+  'http://localhost:3000',
+  'http://localhost:8081',
+  'http://127.0.0.1:8081',
+];
 app.use(cors({
-  origin: '*', // Adjust production CORS rules if needed
+  origin: (origin, callback) => {
+    // Allow no-origin requests (React Native app, server-to-server calls)
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS_BACKEND.includes(origin)) return callback(null, true);
+    callback(new Error('Not allowed by CORS'));
+  },
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Signature', 'X-Timestamp']
 }));
@@ -148,8 +160,13 @@ app.use((req, res, next) => {
     return next();
   }
 
-  // Exempt admin routes for manual testing
+  // Admin routes require special admin secret key header
   if (urlClean.startsWith('/api/admin')) {
+    const adminKey = req.headers['x-admin-key'];
+    const expectedAdminKey = process.env.ADMIN_API_KEY || 'cinestream_admin_2026_secret';
+    if (adminKey !== expectedAdminKey) {
+      return res.status(403).json({ error: 'Forbidden: Admin access denied.' });
+    }
     return next();
   }
 
@@ -165,12 +182,12 @@ app.use((req, res, next) => {
     return res.status(401).json({ error: 'Unauthorized: Missing signature or timestamp.' });
   }
 
-  // 1. Verify timestamp is fresh (Bypassed for emulator testing)
-  // const now = Date.now();
-  // const reqTime = parseInt(timestamp, 10);
-  // if (isNaN(reqTime) || Math.abs(now - reqTime) > 60000) {
-  //   return res.status(403).json({ error: 'Forbidden: Request has expired or clock is out of sync.' });
-  // }
+  // 1. Verify timestamp freshness — prevents replay attacks (5-minute window)
+  const now = Date.now();
+  const reqTime = parseInt(timestamp, 10);
+  if (isNaN(reqTime) || Math.abs(now - reqTime) > 300000) {
+    return res.status(403).json({ error: 'Forbidden: Request has expired or clock is out of sync.' });
+  }
 
   // 2. Re-calculate signature
   const secretKey = process.env.API_KEY || 'cinestream_secret_secure_key_2026';

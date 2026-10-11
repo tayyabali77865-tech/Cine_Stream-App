@@ -6,9 +6,13 @@ import CryptoJS from 'crypto-js';
 const debuggerHost = Constants.expoConfig?.hostUri || '';
 const hostIP = debuggerHost.split(':')[0] || 'localhost';
 
-// 🚀 HARDCODED to prevent EAS Dashboard secrets from injecting old/wrong values
-const deployedApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://cinestream-app-production-640b.up.railway.app';
-const secretKey = process.env.EXPO_PUBLIC_API_KEY || 'cinestream_secret_secure_key_2026';
+// 🚀 API Base URL — VPS backend
+const deployedApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://185.207.250.37:8000';
+
+// 🔐 HMAC secret key — obfuscated segments assembled at runtime
+// Never stored as EXPO_PUBLIC_ env var (would be visible in APK bundle)
+const _k = ['cinestream', 'secret', 'secure', 'key', '2026'];
+const secretKey = _k.join('_');
 
 const normalizeBaseUrl = (value) => {
   if (!value) return '';
@@ -46,24 +50,24 @@ export const getCachedImageUri = (url) => {
   return targetUrl;
 };
 
-// 🏠 Localhost URLs — highest priority (try local server first)
+// 🚀 Live VPS Backend (Contabo) — PRIMARY PRIORITY (Direct Instant Connection)
+const remoteUrls = [
+  'http://185.207.250.37:8000/api',
+  deployedApiBaseUrl ? `${normalizeBaseUrl(deployedApiBaseUrl)}/api` : null,
+].filter(Boolean);
+
+// 🏠 Localhost URLs — fallback only
 const localUrls = [
   `http://192.168.0.40:8000/api`,
   `http://${hostIP}:8000/api`,
   `http://10.0.2.2:8000/api`,
 ];
 
-// ☁️ Live/deployed URLs — fallback only when localhost is unreachable
-const remoteUrls = [
-  deployedApiBaseUrl ? `${normalizeBaseUrl(deployedApiBaseUrl)}/api` : null,
-  'https://cinestream-app-production-640b.up.railway.app/api',
-].filter(Boolean);
+// Remote VPS first!
+const API_FALLBACKS = [...new Set([...remoteUrls, ...localUrls])];
 
-// Localhost first, then remote — deduped
-const API_FALLBACKS = [...new Set([...localUrls, ...remoteUrls])];
-
-// Always start with localhost
-const preferredBaseUrl = `http://192.168.0.40:8000/api`;
+// Always start directly with live VPS backend
+const preferredBaseUrl = 'http://185.207.250.37:8000/api';
 let activeBaseUrl = preferredBaseUrl;
 
 // ─── Netmirror Mirrors Manager (Client-side bypass) ───────────────────────────
