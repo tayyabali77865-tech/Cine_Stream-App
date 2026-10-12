@@ -63,7 +63,18 @@ export const trackEvent = async (eventName, properties = {}) => {
 };
 
 export const trackScreenView = (screenName) => {
+  // Mobile standard screen event
+  trackEvent('$screen', {
+    $screen_name: screenName,
+    screen_name: screenName,
+  });
+
+  // Also send $pageview with host and pathname for Web/Pageview analytics dashboards
   return trackEvent('$pageview', {
-    $current_url: screenName,
+    $current_url: `cinestream://${screenName}`,
+    $host: 'cinestream.app',
+    $pathname: `/${screenName}`,
+    $screen_name: screenName,
+    screen_name: screenName,
   });
 };
