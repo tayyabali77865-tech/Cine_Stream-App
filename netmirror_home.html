@@ -1201,7 +1201,7 @@
       if (!link) {
         if (!confirm('APK link is empty. This will disable OTA auto-updates for users. Continue?')) return;
       } else {
-        if (!confirm(`Broadcast OTA update to all users with APK link:\n${link}`)) return;
+        if (!confirm(`Broadcast OTA update (v${version || 'new'}) to all users with APK link:\n${link}`)) return;
       }
       await saveAdConfig(true);
     }
@@ -1222,6 +1222,7 @@
         backgroundScript: document.getElementById('adBackgroundScript').value,
         rewardedScript: document.getElementById('adRewardedScript').value,
         appUpdateLink: document.getElementById('appUpdateLink').value.trim(),
+        appUpdateVersion: document.getElementById('appUpdateVersion').value.trim() || '1.0.0',
       };
 
       try {

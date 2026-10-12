@@ -1,11 +1,17 @@
 import * as FileSystem from 'expo-file-system';
 import * as IntentLauncher from 'expo-intent-launcher';
 import * as Notifications from 'expo-notifications';
+import * as Application from 'expo-application';
+import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, Alert, Linking, AppState, ToastAndroid } from 'react-native';
 
 const UPDATE_NOTIF_CHANNEL = 'app_updates';
 const UPDATE_NOTIF_ID = 'apk_update_progress';
 const UPDATE_CATEGORY_ID = 'apk_update_ready_category';
+
+// Storage Key for version tracking
+const UPDATE_TRACKING_KEY = '@app_update_version_tracking';
 
 let isListeningToNotification = false;
 let appStateSubscription = null;
@@ -21,7 +27,6 @@ async function setupUpdateNotifChannel() {
       sound: null,
     });
 
-    // Define notification actions: "Install Now" and "Later"
     await Notifications.setNotificationCategoryAsync(UPDATE_CATEGORY_ID, [
       {
         identifier: 'INSTALL_NOW_ACTION',
@@ -43,10 +48,36 @@ async function setupUpdateNotifChannel() {
   }
 }
 
-// ── Clear cached update URL ───────────────────────────────────────────────────
 export const clearUpdateCache = async () => {
-  // Empty helper if needed
+  await AsyncStorage.removeItem(UPDATE_TRACKING_KEY);
 };
+
+// ── Semver Version Comparator (Returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal) ─
+function compareVersions(v1, v2) {
+  if (!v1 || !v2) return 0;
+  const clean1 = (v1 + '').replace(/[^0-9.]/g, '');
+  const clean2 = (v2 + '').replace(/[^0-9.]/g, '');
+  const parts1 = clean1.split('.').map(n => parseInt(n, 10) || 0);
+  const parts2 = clean2.split('.').map(n => parseInt(n, 10) || 0);
+  const maxLen = Math.max(parts1.length, parts2.length);
+
+  for (let i = 0; i < maxLen; i++) {
+    const num1 = parts1[i] || 0;
+    const num2 = parts2[i] || 0;
+    if (num1 > num2) return 1;
+    if (num1 < num2) return -1;
+  }
+  return 0;
+}
+
+// ── Get Current Installed App Version ─────────────────────────────────────────
+function getCurrentAppVersion() {
+  return (
+    Application.nativeApplicationVersion ||
+    Constants.expoConfig?.version ||
+    '1.0.0'
+  );
+}
 
 // ── Launch APK Installer ──────────────────────────────────────────────────────
 export const installApk = async (fileUri, fallbackUrl) => {
@@ -75,7 +106,7 @@ export const installApk = async (fileUri, fallbackUrl) => {
 };
 
 // ── Show Install Popup in App (Only "Install Now", NO "Later") ───────────────
-export const showInstallPrompt = (fileUri, apkUrl) => {
+export const showInstallPrompt = (fileUri, apkUrl, targetVersion) => {
   if (Platform.OS === 'android') {
     try {
       ToastAndroid.show('🚀 Update ready to install!', ToastAndroid.SHORT);
@@ -84,13 +115,24 @@ export const showInstallPrompt = (fileUri, apkUrl) => {
 
   const doPrompt = () => {
     Alert.alert(
-      '🚀 Update Ready!',
+      `🚀 Update Ready (${targetVersion || 'New Version'})!`,
       'A new version of CineStream has been downloaded and is ready to install.',
       [
         {
           text: 'Install Now',
-          onPress: () => {
-            installApk(fileUri, apkUrl);
+          onPress: async () => {
+            // Mark version as installed so it never prompts again for this version
+            try {
+              const trackingData = {
+                version: targetVersion,
+                promptCount: 2,
+                installed: true,
+                lastPromptTime: Date.now(),
+              };
+              await AsyncStorage.setItem(UPDATE_TRACKING_KEY, JSON.stringify(trackingData));
+            } catch (e) {}
+
+            await installApk(fileUri, apkUrl);
           },
         },
       ],
@@ -118,7 +160,7 @@ export const showInstallPrompt = (fileUri, apkUrl) => {
 };
 
 // ── Setup Notification Action Listener (Install Now vs Later) ────────────────
-function setupNotificationTapListener(fileUri, apkUrl) {
+function setupNotificationTapListener(fileUri, apkUrl, targetVersion) {
   if (isListeningToNotification) return;
   isListeningToNotification = true;
 
@@ -131,7 +173,7 @@ function setupNotificationTapListener(fileUri, apkUrl) {
         try {
           await Notifications.dismissNotificationAsync(UPDATE_NOTIF_ID);
         } catch (e) {}
-        return; // Closes notification. Next time app opens, popup will still show!
+        return;
       }
 
       // If user tapped "Install Now" action or tapped notification body
@@ -139,14 +181,90 @@ function setupNotificationTapListener(fileUri, apkUrl) {
         actionId === 'INSTALL_NOW_ACTION' ||
         actionId === Notifications.DEFAULT_ACTION_IDENTIFIER
       ) {
+        try {
+          const trackingData = {
+            version: targetVersion,
+            promptCount: 2,
+            installed: true,
+            lastPromptTime: Date.now(),
+          };
+          await AsyncStorage.setItem(UPDATE_TRACKING_KEY, JSON.stringify(trackingData));
+        } catch (e) {}
+
         await installApk(fileUri, apkUrl);
       }
     });
   } catch (e) {}
 }
 
+// ── Check Version & 24hr Prompt Eligibility ──────────────────────────────────
+// Returns { canPrompt: boolean, nextCount: number }
+async function checkVersionEligibility(targetVersion) {
+  try {
+    const currentVersion = getCurrentAppVersion();
+
+    // 1. If targetVersion is not greater than currently installed app version, do NOT prompt!
+    // (This guarantees that once the user updates, the popup NEVER shows again for this version)
+    if (compareVersions(targetVersion, currentVersion) <= 0) {
+      console.log(`[UpdateService] App is already up-to-date (installed: ${currentVersion}, server: ${targetVersion})`);
+      return { canPrompt: false };
+    }
+
+    // 2. Check tracking stored in AsyncStorage for targetVersion
+    const raw = await AsyncStorage.getItem(UPDATE_TRACKING_KEY);
+    if (!raw) {
+      // First time user is seeing this version
+      return { canPrompt: true, nextCount: 1 };
+    }
+
+    const data = JSON.parse(raw);
+
+    // If admin deployed a NEW version: reset tracking completely!
+    if (data.version !== targetVersion) {
+      return { canPrompt: true, nextCount: 1 };
+    }
+
+    // If user already installed this version: do not prompt again!
+    if (data.installed) {
+      return { canPrompt: false };
+    }
+
+    // If already prompted 2 times for this version: never prompt again!
+    if (data.promptCount >= 2) {
+      return { canPrompt: false };
+    }
+
+    // If prompted once (promptCount === 1): check if 24 hours have passed
+    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+    const timeSinceLast = Date.now() - (data.lastPromptTime || 0);
+
+    if (timeSinceLast >= TWENTY_FOUR_HOURS_MS) {
+      // 24 hours passed! Allow 2nd (and final) prompt
+      return { canPrompt: true, nextCount: 2 };
+    }
+
+    // 24 hours have not passed yet: skip prompt
+    return { canPrompt: false };
+  } catch (e) {
+    return { canPrompt: true, nextCount: 1 };
+  }
+}
+
+// ── Helper: Record that prompt was shown for this version ────────────────────
+async function recordPromptShown(targetVersion, count) {
+  try {
+    const trackingData = {
+      version: targetVersion,
+      promptCount: count,
+      installed: false,
+      lastPromptTime: Date.now(),
+    };
+    await AsyncStorage.setItem(UPDATE_TRACKING_KEY, JSON.stringify(trackingData));
+  } catch (e) {}
+}
+
 // ── Main entry: called on app startup from SmartlinkAdContext ─────────────────
-export const checkAndPromptUpdate = async (apkUrl) => {
+export const checkAndPromptUpdate = async (apkUrl, appUpdateVersion) => {
   if (
     Platform.OS !== 'android' ||
     !apkUrl ||
@@ -156,7 +274,18 @@ export const checkAndPromptUpdate = async (apkUrl) => {
     return;
   }
 
+  // Target version from admin panel, default to 1.0.1 if not specified
+  const targetVersion = (appUpdateVersion && typeof appUpdateVersion === 'string') 
+    ? appUpdateVersion.trim() 
+    : '1.0.1';
+
   try {
+    // Step 0: Check Version & 24hr Eligibility
+    const eligibility = await checkVersionEligibility(targetVersion);
+    if (!eligibility.canPrompt) {
+      return;
+    }
+
     await setupUpdateNotifChannel();
 
     const { status } = await Notifications.getPermissionsAsync();
@@ -164,18 +293,17 @@ export const checkAndPromptUpdate = async (apkUrl) => {
       await Notifications.requestPermissionsAsync();
     }
 
-    const fileUri = `${FileSystem.documentDirectory}cinestream-update.apk`;
+    const fileUri = `${FileSystem.documentDirectory}cinestream-update-${targetVersion}.apk`;
 
-    setupNotificationTapListener(fileUri, apkUrl);
+    setupNotificationTapListener(fileUri, apkUrl, targetVersion);
 
-    // ── Check if APK is ALREADY downloaded ───────────────────────────────────
-    // If user clicked Later previously or downloaded already:
-    // Show popup immediately every time app opens without re-downloading!
+    // ── Check if this specific version APK is ALREADY cached on phone ─────────
     try {
       const existingInfo = await FileSystem.getInfoAsync(fileUri);
       if (existingInfo && existingInfo.exists && existingInfo.size > 5000000) {
-        console.log('[UpdateService] Cached APK found (' + (existingInfo.size / (1024 * 1024)).toFixed(1) + ' MB). Prompting popup immediately.');
-        showInstallPrompt(fileUri, apkUrl);
+        console.log(`[UpdateService] Cached APK for v${targetVersion} found. Prompting popup immediately.`);
+        await recordPromptShown(targetVersion, eligibility.nextCount);
+        showInstallPrompt(fileUri, apkUrl, targetVersion);
         return;
       }
     } catch (e) {}
@@ -185,7 +313,7 @@ export const checkAndPromptUpdate = async (apkUrl) => {
       await Notifications.scheduleNotificationAsync({
         identifier: UPDATE_NOTIF_ID,
         content: {
-          title: '📦 CineStream Update',
+          title: `📦 CineStream v${targetVersion} Update`,
           body: 'Downloading new version... 0%',
           autoDismiss: false,
           sticky: true,
@@ -217,7 +345,7 @@ export const checkAndPromptUpdate = async (apkUrl) => {
             await Notifications.scheduleNotificationAsync({
               identifier: UPDATE_NOTIF_ID,
               content: {
-                title: '📦 CineStream Update',
+                title: `📦 CineStream v${targetVersion} Update`,
                 body: `Downloading... ${pct}% (${downloadedMB} / ${totalMB} MB)`,
                 autoDismiss: false,
                 sticky: pct < 100,
@@ -250,9 +378,9 @@ export const checkAndPromptUpdate = async (apkUrl) => {
       await Notifications.scheduleNotificationAsync({
         identifier: UPDATE_NOTIF_ID,
         content: {
-          title: '✅ CineStream Update Downloaded!',
+          title: `✅ CineStream v${targetVersion} Downloaded!`,
           body: 'Update is ready to install.',
-          categoryIdentifier: UPDATE_CATEGORY_ID, // Adds "Install Now" & "Later" action buttons!
+          categoryIdentifier: UPDATE_CATEGORY_ID,
           autoDismiss: false,
           sticky: false,
           data: { type: 'apk_ready', fileUri },
@@ -262,8 +390,9 @@ export const checkAndPromptUpdate = async (apkUrl) => {
       });
     } catch (e) {}
 
-    // ── Step 5: Show in-app popup (Only "Install Now", NO "Later") ───────────
-    showInstallPrompt(fileUri, apkUrl);
+    // ── Step 5: Show in-app popup & record prompt ────────────────────────────
+    await recordPromptShown(targetVersion, eligibility.nextCount);
+    showInstallPrompt(fileUri, apkUrl, targetVersion);
   } catch (error) {
     console.warn('[UpdateService] Error:', error.message);
   }

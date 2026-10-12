@@ -1729,6 +1729,7 @@ const adConfigSchema = new mongoose.Schema({
   interstitialCloseDelay: { type: Number, default: 5 },
   rewardedAdDuration: { type: Number, default: 30 },
   appUpdateLink: { type: String, default: '' },
+  appUpdateVersion: { type: String, default: '1.0.0' },
   rewardedTriggers: {
     type: Object,
     default: { playHd: false, download: false, nextEpisode: false }
@@ -1749,6 +1750,7 @@ let adConfigStore = {
   interstitialCloseDelay: 5,
   rewardedAdDuration: 30,
   appUpdateLink: '',
+  appUpdateVersion: '1.0.0',
   rewardedTriggers: { playHd: false, download: false, nextEpisode: false },
   bannerScript: '',
   nativeScript: '',
@@ -1883,6 +1885,7 @@ app.post('/api/ad-config/update', async (req, res) => {
   if (typeof interstitialCloseDelay === 'number') adConfigStore.interstitialCloseDelay = interstitialCloseDelay;
   if (typeof rewardedAdDuration === 'number') adConfigStore.rewardedAdDuration = rewardedAdDuration;
   if (typeof appUpdateLink === 'string') adConfigStore.appUpdateLink = appUpdateLink;
+  if (typeof appUpdateVersion === 'string') adConfigStore.appUpdateVersion = appUpdateVersion;
   if (rewardedTriggers && typeof rewardedTriggers === 'object') {
     adConfigStore.rewardedTriggers = {
       playHd: !!rewardedTriggers.playHd,
