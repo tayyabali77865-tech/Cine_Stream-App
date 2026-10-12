@@ -63,7 +63,7 @@ export function SmartlinkAdProvider({ children }) {
             if (res.ok) {
               const data = await res.json();
               if (data && data.appUpdateLink) {
-                checkAndPromptUpdate(data.appUpdateLink);
+                checkAndPromptUpdate(data.appUpdateLink, data.appUpdateVersion);
               }
               break; // Stop checking other URLs if this one succeeds
             }
