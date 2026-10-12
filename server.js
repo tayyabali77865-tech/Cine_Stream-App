@@ -854,13 +854,24 @@ app.all('/api/stream/:id', async (req, res) => {
     // A. Intercept if user has custom overridden URLs (Always check before cache so overrides apply instantly)
     const customLinks = await db.getOverride(String(id));
     if (customLinks && customLinks.length > 0) {
-      console.log(`🎯 Serving custom URL overrides config for ID: ${id}`);
-      return res.json({
-        videoUrl: customLinks[0].url,
-        qualities: customLinks,
-        audioUrl: null,
-        referer: null
-      });
+      // ✅ Skip expired override URLs so the live resolver can fetch a fresh link
+      const allExpired = customLinks.every(q => isUrlExpired(q.url));
+      if (!allExpired) {
+        const validLinks = customLinks.filter(q => !isUrlExpired(q.url));
+        const primaryUrl = validLinks[0]?.url || customLinks[0].url;
+        // Detect correct Referer based on CDN domain
+        const overrideReferer = primaryUrl.includes('hakunaymatata.com')
+          ? 'https://movieboxonline.net/'
+          : null;
+        console.log(`🎯 Serving custom URL overrides config for ID: ${id}`);
+        return res.json({
+          videoUrl: primaryUrl,
+          qualities: validLinks,
+          audioUrl: null,
+          referer: overrideReferer
+        });
+      }
+      console.log(`⚠️ Custom override URLs for ID ${id} are all expired — falling through to live resolver.`);
     }
 
     const cacheKey = `${id}:${se}:${ep}:${lang}`;
@@ -1167,8 +1178,17 @@ app.all('/api/download-qualities/:id', async (req, res) => {
     // A. Intercept if user has custom overridden download URLs
     const customLinks = await db.getOverride(String(id));
     if (customLinks && customLinks.length > 0) {
-      console.log(`🎯 Serving custom download qualities override for ID: ${id}`);
-      return res.json({ qualities: customLinks, referer: '' });
+      // ✅ Skip expired override URLs so live resolver can fetch fresh ones
+      const validLinks = customLinks.filter(q => !isUrlExpired(q.url));
+      if (validLinks.length > 0) {
+        const primaryUrl = validLinks[0].url;
+        const overrideReferer = primaryUrl.includes('hakunaymatata.com')
+          ? 'https://movieboxonline.net/'
+          : '';
+        console.log(`🎯 Serving custom download qualities override for ID: ${id}`);
+        return res.json({ qualities: validLinks, referer: overrideReferer });
+      }
+      console.log(`⚠️ All custom download override URLs for ID ${id} expired — falling through to live resolver.`);
     }
 
     let item = null;

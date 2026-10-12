@@ -75,23 +75,7 @@ export function SmartlinkAdProvider({ children }) {
         console.warn('OTA Check failed', e);
       }
     };
-    // 1. Check immediately on startup
     checkUpdates();
-
-    // 2. Poll every 15 minutes (safe for VPS, zero overload)
-    const otaPollInterval = setInterval(checkUpdates, 15 * 60 * 1000);
-
-    // 3. Check whenever user returns to the app from background
-    const appStateSub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        checkUpdates();
-      }
-    });
-
-    return () => {
-      clearInterval(otaPollInterval);
-      appStateSub?.remove?.();
-    };
   }, []);
 
   useEffect(() => {
