@@ -15,6 +15,7 @@ const UPDATE_TRACKING_KEY = '@app_update_version_tracking';
 
 let isListeningToNotification = false;
 let appStateSubscription = null;
+let isDownloadingUpdate = false;
 
 // ── Notification channel & categories setup (Android) ────────────────────────
 async function setupUpdateNotifChannel() {
@@ -72,8 +73,9 @@ function compareVersions(v1, v2) {
 
 // ── Get Current Installed App Version ─────────────────────────────────────────
 function getCurrentAppVersion() {
+  // Use project app.json version first!
+  // In Expo Go, Application.nativeApplicationVersion returns Expo Go's own app version (2.32.19) instead of CineStream's version!
   return (
-    Application.nativeApplicationVersion ||
     Constants.expoConfig?.version ||
     '1.0.0'
   );
@@ -280,9 +282,13 @@ export const checkAndPromptUpdate = async (apkUrl, appUpdateVersion) => {
     : '1.0.1';
 
   try {
+    if (isDownloadingUpdate) return;
+    isDownloadingUpdate = true;
+
     // Step 0: Check Version & 24hr Eligibility
     const eligibility = await checkVersionEligibility(targetVersion);
     if (!eligibility.canPrompt) {
+      isDownloadingUpdate = false;
       return;
     }
 
@@ -304,6 +310,7 @@ export const checkAndPromptUpdate = async (apkUrl, appUpdateVersion) => {
         console.log(`[UpdateService] Cached APK for v${targetVersion} found. Prompting popup immediately.`);
         await recordPromptShown(targetVersion, eligibility.nextCount);
         showInstallPrompt(fileUri, apkUrl, targetVersion);
+        isDownloadingUpdate = false;
         return;
       }
     } catch (e) {}
@@ -393,7 +400,9 @@ export const checkAndPromptUpdate = async (apkUrl, appUpdateVersion) => {
     // ── Step 5: Show in-app popup & record prompt ────────────────────────────
     await recordPromptShown(targetVersion, eligibility.nextCount);
     showInstallPrompt(fileUri, apkUrl, targetVersion);
+    isDownloadingUpdate = false;
   } catch (error) {
+    isDownloadingUpdate = false;
     console.warn('[UpdateService] Error:', error.message);
   }
 };
