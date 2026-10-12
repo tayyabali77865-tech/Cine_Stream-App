@@ -1878,13 +1878,16 @@ app.post('/api/ad-config/update', async (req, res) => {
     interstitialScript,
     backgroundScript,
     rewardedScript,
-    appUpdateLink
+    appUpdateLink,
+    appUpdateVersion
   } = req.body;
 
   if (typeof adsEnabled === 'boolean') adConfigStore.adsEnabled = adsEnabled;
   if (typeof interstitialCloseDelay === 'number') adConfigStore.interstitialCloseDelay = interstitialCloseDelay;
   if (typeof rewardedAdDuration === 'number') adConfigStore.rewardedAdDuration = rewardedAdDuration;
   if (typeof appUpdateLink === 'string') adConfigStore.appUpdateLink = appUpdateLink;
+  if (typeof appUpdateVersion === 'string') adConfigStore.appUpdateVersion = appUpdateVersion;
+  if (typeof appUpdateVersion === 'string') adConfigStore.appUpdateVersion = appUpdateVersion;
   if (typeof appUpdateVersion === 'string') adConfigStore.appUpdateVersion = appUpdateVersion;
   if (rewardedTriggers && typeof rewardedTriggers === 'object') {
     adConfigStore.rewardedTriggers = {
