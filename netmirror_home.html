@@ -623,8 +623,18 @@
           <div class="editor-card" style="border-left:4px solid #00E676; margin-top:20px; padding-top:20px; border-top:1px solid #1a1a24;">
             <div class="editor-label" style="color:#00E676; font-size:16px;">📲 OTA App Auto-Updater (APK Link)</div>
             <div style="font-size:12px; color:#9CA3AF; margin-bottom:12px;">Paste direct APK link (e.g., Github Releases). App will silently download and prompt user to install. Leave blank to disable.</div>
-            <input type="text" id="appUpdateLink" placeholder="https://github.com/.../releases/download/.../app.apk" 
-              style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;margin-bottom:12px;">
+            <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+              <div style="flex:1;min-width:180px;">
+                <label style="font-size:12px;font-weight:600;color:#00E676;display:block;margin-bottom:6px;">📌 APK Version (e.g. 1.0.1, 1.1.0, 2.0.0)</label>
+                <input type="text" id="appUpdateVersion" placeholder="1.0.1" 
+                  style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;">
+              </div>
+              <div style="flex:2;min-width:280px;">
+                <label style="font-size:12px;font-weight:600;color:#00E676;display:block;margin-bottom:6px;">🔗 Direct APK Download Link</label>
+                <input type="text" id="appUpdateLink" placeholder="https://github.com/.../releases/download/.../app.apk" 
+                  style="width:100%;background:#0D0D11;border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:14px;">
+              </div>
+            </div>
             <button class="btn" onclick="saveOtaUpdateOnly()" style="width:100%;padding:13px;font-size:14px;font-weight:700;background:#00E676;color:#000;">🚀 Save & Broadcast Update to All Users</button>
           </div>
 
@@ -1156,7 +1166,10 @@
         document.getElementById('adBackgroundScript').value = config.backgroundScript || '';
         document.getElementById('adRewardedScript').value = config.rewardedScript || '';
         if (config.appUpdateLink !== undefined) {
-          document.getElementById('appUpdateLink').value = config.appUpdateLink;
+          document.getElementById('appUpdateLink').value = config.appUpdateLink || '';
+        }
+        if (config.appUpdateVersion !== undefined) {
+          document.getElementById('appUpdateVersion').value = config.appUpdateVersion || '';
         }
       } catch (e) {
         console.warn('Failed to load ad config:', e);
@@ -1198,6 +1211,7 @@
 
     async function saveOtaUpdateOnly() {
       const link = document.getElementById('appUpdateLink').value.trim();
+      const version = (document.getElementById('appUpdateVersion')?.value || '').trim();
       if (!link) {
         if (!confirm('APK link is empty. This will disable OTA auto-updates for users. Continue?')) return;
       } else {
@@ -1222,6 +1236,7 @@
         backgroundScript: document.getElementById('adBackgroundScript').value,
         rewardedScript: document.getElementById('adRewardedScript').value,
         appUpdateLink: document.getElementById('appUpdateLink').value.trim(),
+        appUpdateVersion: (document.getElementById('appUpdateVersion')?.value || '1.0.0').trim(),
         appUpdateVersion: document.getElementById('appUpdateVersion').value.trim() || '1.0.0',
       };
 
